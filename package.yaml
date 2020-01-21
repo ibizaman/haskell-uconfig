@@ -1,0 +1,51 @@
+# https://github.com/sol/hpack
+
+name:                uconfig
+version:             0.0.0.1
+github:              "ibizaman/haskell-uconfig"
+license:             BSD3
+author:              "Pierre Penninckx"
+maintainer:          "ibizapeanut@gmail.com"
+copyright:           "2020 Pierre Penninckx"
+
+description:         Please see the README on GitHub at <https://github.com/ibizaman/haskell-uconfig#readme>
+
+dependencies:
+  - base
+
+library:
+  source-dirs: src
+
+executables:
+  uconfig:
+    main:                main.hs
+    source-dirs:         app
+    dependencies:
+      - uconfig
+
+tests:
+  uconfig-test:
+    main:                Spec.hs
+    source-dirs:         test
+    dependencies:
+      - uconfig
+      - hspec == 2.7.1
+      - hspec-core == 2.7.1
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wredundant-constraints
+  - -fwarn-incomplete-patterns
+  - -fwarn-incomplete-record-updates
+  - -fwarn-incomplete-uni-patterns
+  - -fwarn-missing-signatures
+  - -fwarn-name-shadowing
+  - -fwarn-overlapping-patterns
+  - -fwarn-tabs
+  - -fwarn-unused-imports
+  - -rtsopts
+  - -threaded
+  - -with-rtsopts=-N
