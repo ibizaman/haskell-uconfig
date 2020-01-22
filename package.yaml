@@ -12,6 +12,11 @@ description:         Please see the README on GitHub at <https://github.com/ibiz
 
 dependencies:
   - base
+  - text
+  - megaparsec
+
+default-extensions:
+  - OverloadedStrings
 
 library:
   source-dirs: src
