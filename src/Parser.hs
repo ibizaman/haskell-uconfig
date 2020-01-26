@@ -15,17 +15,21 @@ module Parser
       Parser
     , parse
 
-        -- Special words
+        -- Words
     , number
+    , until
 
         -- Lines
     , line
     , lines
     , paragraphs
+    , newlineSeparated
     )
 where
 
-import           Prelude                 hiding ( lines )
+import           Prelude                 hiding ( lines
+                                                , until
+                                                )
 import           Control.Applicative            ( (<|>) )
 import qualified Control.Monad                 as CM
 import qualified Data.Text                     as T
@@ -71,15 +75,27 @@ number = do
            )
 
 
+-- |Parse all characters until a given character.
+until :: Char -> Parser T.Text
+until c =
+    fmap T.pack $ MP.someTill MP.anySingle $ (MPC.char c >> return ()) <|> eol_ <|> MP.eof
+
+
 -- |Parse a line ending with a newline '\n' or '\r'. Fails on empty
 -- line.
 line :: Parser T.Text
-line = fmap T.pack $ MP.someTill (MP.noneOf ['\n', '\r']) $ eol_ <|> MP.eof
+line = fmap T.pack $ MP.someTill MP.anySingle $ eol_ <|> MP.eof
 
 -- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
 -- there is only the empty line.
 lines :: Parser [T.Text]
-lines = MP.someTill line $ eol_ <|> MP.eof
+lines = newlineSeparated line
+
+-- |Use given parser to parse multiple lines in a row. Ends on an
+-- empty line. Fails if there is only the empty line.
+newlineSeparated :: Parser a -> Parser [a]
+newlineSeparated parser = MP.someTill parser $ eol_ <|> MP.eof
+
 
 -- |Parse multiple 'lines' in a row separated by empty lines. Fails if
 -- there is only the empty line, otherwise always consumes all
