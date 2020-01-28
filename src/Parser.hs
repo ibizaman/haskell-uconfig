@@ -14,8 +14,15 @@ module Parser
         -- Base parser
       Parser
     , parse
+    , MP.choice
+    , MP.between
+    , between'
+    , space
 
         -- Words
+    , MPC.char
+    , word
+    , words
     , number
     , until
 
@@ -29,6 +36,7 @@ where
 
 import           Prelude                 hiding ( lines
                                                 , until
+                                                , words
                                                 )
 import           Control.Applicative            ( (<|>) )
 import qualified Control.Monad                 as CM
@@ -49,6 +57,19 @@ parse
     -> Either T.Text a -- ^Returns the parsed value or an error string.
 parse parser input =
     mapLeft (T.pack . MP.errorBundlePretty) $ MP.parse parser "input" input
+
+
+-- |Like 'MP.between' but also returns what the 'open' and 'close'
+-- parser matched.
+between' :: Parser open -> Parser close -> Parser p -> Parser (open, p, close)
+between' open close p = (,,) <$> open <*> p <*> close
+
+
+-- |Parse 0 or more space character and return how many was matched.
+space :: Parser Int
+space = fmap length $ MP.many $ MPC.char ' '
+    -- length <$> MP.manyTill (MPC.char ' ') (MP.satisfy (' ' /=))
+
 
 -- |Parse a number in format '[-+]?[0-9](.[0-9])?'.
 number :: Read a => Parser a
@@ -78,23 +99,43 @@ number = do
 -- |Parse all characters until a given character.
 until :: Char -> Parser T.Text
 until c =
-    fmap T.pack $ MP.someTill MP.anySingle $ (MPC.char c >> return ()) <|> eol_ <|> MP.eof
+    fmap T.pack
+        $   MP.someTill MP.anySingle
+        $   (MPC.char c >> return ())
+        <|> eol_
+        <|> MP.eof
+
+
+-- |Matches one or more successive 'MPC.asciiChar'.
+word :: Parser T.Text
+word = T.pack <$> MP.some MPC.alphaNumChar
+
+
+-- |Matches one or more 'word' separated by 'space'.
+words :: Parser T.Text
+words = do
+    first <- word
+    rest  <- MP.many $ MP.try $ do
+        s <- fmap T.pack $ MP.some $ MPC.char ' '
+        w <- word
+        return $ s <> w
+    return $ first <> mconcat rest
 
 
 -- |Parse a line ending with a newline '\n' or '\r'. Fails on empty
--- line.
+-- line. Does not consume the newline.
 line :: Parser T.Text
-line = fmap T.pack $ MP.someTill MP.anySingle $ eol_ <|> MP.eof
+line = T.pack <$> MP.someTill MP.anySingle (eol_ <|> MP.eof)
 
 -- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
 -- there is only the empty line.
 lines :: Parser [T.Text]
-lines = newlineSeparated line
+lines = MP.someTill line (eol_ <|> MP.eof)
 
 -- |Use given parser to parse multiple lines in a row. Ends on an
 -- empty line. Fails if there is only the empty line.
 newlineSeparated :: Parser a -> Parser [a]
-newlineSeparated parser = MP.someTill parser $ eol_ <|> MP.eof
+newlineSeparated parser = MP.sepEndBy1 parser (eol_ <|> MP.eof)
 
 
 -- |Parse multiple 'lines' in a row separated by empty lines. Fails if
