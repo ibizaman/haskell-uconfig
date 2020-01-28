@@ -18,6 +18,8 @@ module Parser
     , MP.between
     , between'
     , space
+    , MP.some
+    , eol
 
         -- Words
     , MPC.char
@@ -102,8 +104,7 @@ until c =
     fmap T.pack
         $   MP.someTill MP.anySingle
         $   (MPC.char c >> return ())
-        <|> eol_
-        <|> MP.eof
+        <|> eol
 
 
 -- |Matches one or more successive 'MPC.asciiChar'.
@@ -125,31 +126,32 @@ words = do
 -- |Parse a line ending with a newline '\n' or '\r'. Fails on empty
 -- line. Does not consume the newline.
 line :: Parser T.Text
-line = T.pack <$> MP.someTill MP.anySingle (eol_ <|> MP.eof)
+line = T.pack <$> MP.manyTill MP.anySingle eol
 
 -- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
 -- there is only the empty line.
 lines :: Parser [T.Text]
-lines = MP.someTill line (eol_ <|> MP.eof)
+lines = MP.manyTill line eol
 
 -- |Use given parser to parse multiple lines in a row. Ends on an
 -- empty line. Fails if there is only the empty line.
 newlineSeparated :: Parser a -> Parser [a]
-newlineSeparated parser = MP.sepEndBy1 parser (eol_ <|> MP.eof)
+newlineSeparated parser = MP.sepEndBy1 parser eol
 
 
 -- |Parse multiple 'lines' in a row separated by empty lines. Fails if
 -- there is only the empty line, otherwise always consumes all
 -- remaining input.
 paragraphs :: Parser [[T.Text]]
-paragraphs = flip MP.someTill MP.eof $ do
+paragraphs = flip MP.manyTill MP.eof $ do
     r <- lines
-    _ <- MP.many eol_
+    _ <- MP.many MPC.eol
     return r
 
 
-eol_ :: Parser ()
-eol_ = CM.void MPC.eol
+-- |Parses a newline or end of file.
+eol :: Parser ()
+eol = CM.void MPC.eol <|> MP.eof
 
 
 mapLeft :: (a -> c) -> Either a b -> Either c b

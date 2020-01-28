@@ -37,13 +37,15 @@ spec = do
             parse words "abc    def  " `H.shouldBe` Right "abc    def"
     H.describe "newlineSeparated" $ do
         H.it "fails on empty input" $ do
-          parse (newlineSeparated word) "" `H.shouldSatisfy` isLeft
+            parse (newlineSeparated word) "" `H.shouldSatisfy` isLeft
         H.it "parses one line" $ do
-          parse (newlineSeparated word) "abc" `H.shouldBe` Right ["abc"]
+            parse (newlineSeparated word) "abc" `H.shouldBe` Right ["abc"]
         H.it "parses multiple lines" $ do
-          parse (newlineSeparated word) "a\nb\nc" `H.shouldBe` Right ["a", "b", "c"]
+            parse (newlineSeparated word) "a\nb\nc"
+                `H.shouldBe` Right ["a", "b", "c"]
         H.it "parses multiple lines with trailing newline" $ do
-          parse (newlineSeparated word) "a\nb\nc\n" `H.shouldBe` Right ["a", "b", "c"]
+            parse (newlineSeparated word) "a\nb\nc\n"
+                `H.shouldBe` Right ["a", "b", "c"]
     H.describe "number" $ do
         H.it "parses 1" $ parse number "1" `H.shouldBe` Right (1 :: Int)
         H.it "parses big number" $ parse number "123456789" `H.shouldBe` Right
@@ -56,13 +58,13 @@ spec = do
             $            parse number "123.123"
             `H.shouldBe` Right (123.123 :: Float)
     H.describe "line" $ do
-        H.it "fails on empty line" $ parse line "" `H.shouldSatisfy` isLeft
+        H.it "parses empty line" $ parse line "" `H.shouldBe` Right ""
         H.it "parses until eof" $ parse line "one two" `H.shouldBe` Right
             "one two"
         H.it "parses until eol" $ parse line "one two\nthree" `H.shouldBe` Right
             "one two"
     H.describe "lines" $ do
-        H.it "fails on empty line" $ parse lines "" `H.shouldSatisfy` isLeft
+        H.it "parses empty line" $ parse lines "" `H.shouldBe` Right []
         H.it "parses multiple lines"
             $            parse lines "one\ntwo\nthree"
             `H.shouldBe` Right ["one", "two", "three"]
@@ -73,9 +75,7 @@ spec = do
             $            parse lines "one\n  \nthree"
             `H.shouldBe` Right ["one", "  ", "three"]
     H.describe "paragraphs" $ do
-        H.it "fails on empty line"
-            $                 parse paragraphs ""
-            `H.shouldSatisfy` isLeft
+        H.it "parses empty line" $ parse paragraphs "" `H.shouldBe` Right []
         H.it "parses multiple paragraphs"
             $            parse paragraphs "one\ntwo\n\n\nthree\nfour\n\n"
             `H.shouldBe` Right [["one", "two"], ["three", "four"]]

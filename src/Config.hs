@@ -11,12 +11,16 @@ The Config module provides functions for parsing config files.
 -}
 module Config
     ( Flat(..)
+    , Sectioned(..)
     , Assignment(..)
     , Quoted(..)
     , Spaced(..)
     , P.parse
     , flat
+    , sectioned
     , assignment
+    , header
+    , section
     , spaced
     , quoted
     )
@@ -32,6 +36,10 @@ import qualified Parser                        as P
 
 -- |Flat is a config consisting of only assignments.
 newtype Flat = Flat [Assignment]
+  deriving (Show, Eq)
+
+
+newtype Sectioned = Sectioned [(T.Text, [Assignment])]
   deriving (Show, Eq)
 
 
@@ -56,6 +64,21 @@ data Spaced a = Spaced Int Int a
 -- 'assignment'.
 flat :: P.Parser Flat
 flat = Flat <$> P.newlineSeparated assignment
+
+
+-- |Parses a flat config with sections.
+sectioned :: P.Parser Sectioned
+sectioned = Sectioned <$> P.some section
+
+
+-- |Parses a header which is 'P.words' enclosed in square brackets.
+header :: P.Parser T.Text
+header = P.between "[" "]" P.words <* P.line
+
+
+-- |Parses a header followed by a list of assignment.
+section :: P.Parser (T.Text, [Assignment])
+section = (,) <$> header <*> P.newlineSeparated assignment
 
 
 -- |Parses an assignment which is a key=value pair.
