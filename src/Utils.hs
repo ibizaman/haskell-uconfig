@@ -1,6 +1,9 @@
 module Utils
-  ( equal )
-  where
+    ( isLeft
+    )
+where
 
-equal :: Eq a => a -> a -> Bool
-equal = (==)
+
+isLeft :: Either a b -> Bool
+isLeft (Right _) = False
+isLeft (Left  _) = True

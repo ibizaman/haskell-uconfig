@@ -11,6 +11,8 @@ import qualified Test.Hspec                    as H
 
 import           Parser
 
+import qualified Utils                         as U
+
 
 spec :: H.Spec
 spec = do
@@ -37,7 +39,7 @@ spec = do
             parse words "abc    def  " `H.shouldBe` Right "abc    def"
     H.describe "newlineSeparated" $ do
         H.it "fails on empty input" $ do
-            parse (newlineSeparated word) "" `H.shouldSatisfy` isLeft
+            parse (newlineSeparated word) "" `H.shouldSatisfy` U.isLeft
         H.it "parses one line" $ do
             parse (newlineSeparated word) "abc" `H.shouldBe` Right ["abc"]
         H.it "parses multiple lines" $ do
@@ -79,8 +81,3 @@ spec = do
         H.it "parses multiple paragraphs"
             $            parse paragraphs "one\ntwo\n\n\nthree\nfour\n\n"
             `H.shouldBe` Right [["one", "two"], ["three", "four"]]
-
-
-isLeft :: Either a b -> Bool
-isLeft (Right _) = False
-isLeft (Left  _) = True
