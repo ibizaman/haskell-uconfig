@@ -18,10 +18,21 @@ module Parser
     , MP.between
     , between'
     , space
+    , MP.many
+    , MP.manyTill
     , MP.some
+    , MP.someTill
     , eol
+    , MP.lookAhead
+    , MP.anySingle
+    , MP.unexpected
+    , MP.try
+    , MP.satisfy
+    , MP.notFollowedBy
+    , build
 
         -- Words
+    , MP.chunk
     , MPC.char
     , word
     , words
@@ -30,6 +41,7 @@ module Parser
 
         -- Lines
     , line
+    , emptyLine
     , lines
     , paragraphs
     , newlineSeparated
@@ -70,13 +82,12 @@ between' open close p = (,,) <$> open <*> p <*> close
 -- |Parse 0 or more space character and return how many was matched.
 space :: Parser Int
 space = fmap length $ MP.many $ MPC.char ' '
-    -- length <$> MP.manyTill (MPC.char ' ') (MP.satisfy (' ' /=))
 
 
 -- |Parse a number in format '[-+]?[0-9](.[0-9])?'.
 number :: Read a => Parser a
 number = do
-    sign' <- MP.optional (MP.oneOf ['-', '+'])
+    sign' <- MP.optional (MP.satisfy (\x -> x == '-' || x == '+'))
     let sign = case sign' of
             Nothing  -> mempty
             Just '+' -> mempty
@@ -99,17 +110,32 @@ number = do
 
 
 -- |Parse all characters until a given character.
-until :: Char -> Parser T.Text
-until c =
-    fmap T.pack
-        $   MP.someTill MP.anySingle
-        $   (MPC.char c >> return ())
-        <|> eol
+until :: Parser b -> Parser T.Text
+until match =
+    fmap T.pack $ MP.someTill MP.anySingle $ (match *> return ()) <|> eol
 
 
 -- |Matches one or more successive 'MPC.asciiChar'.
 word :: Parser T.Text
-word = T.pack <$> MP.some MPC.alphaNumChar
+word = T.pack <$> MP.some
+    (MPC.alphaNumChar <|> MP.satisfy
+        (\x ->
+            x
+                == '.'
+                || x
+                == '-'
+                || x
+                == '_'
+                || x
+                == '/'
+                || x
+                == '('
+                || x
+                == ')'
+                || x
+                == ':'
+        )
+    )
 
 
 -- |Matches one or more 'word' separated by 'space'.
@@ -127,6 +153,11 @@ words = do
 -- line. Does not consume the newline.
 line :: Parser T.Text
 line = T.pack <$> MP.manyTill MP.anySingle eol
+
+-- |Parse a line including only ending with a newline '\n' or '\r'.
+-- Succeeds on empty line. Does not consume the newline.
+emptyLine :: Parser ()
+emptyLine = MP.manyTill MPC.spaceChar (CM.void MPC.eol) *> return ()
 
 -- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
 -- there is only the empty line.
@@ -149,16 +180,23 @@ paragraphs = flip MP.manyTill MP.eof $ do
     return r
 
 
--- |Parses a newline or end of file.
+-- |Parse a newline or end of file.
 eol :: Parser ()
 eol = CM.void MPC.eol <|> MP.eof
 
 
+-- |Builds a 'Monoid' from a list of 'P.Parser'.
+build :: (Monoid a) => [Parser a] -> Parser a
+build ps = mconcat <$> MP.many (MP.choice (fmap MP.try ps))
+
+
+-- |Apply function on 'Left' side of an 'Either'.
 mapLeft :: (a -> c) -> Either a b -> Either c b
 mapLeft f (Left  a) = Left $ f a
 mapLeft _ (Right b) = Right b
 
 
+-- |Call 'fail' on Nothing.
 maybeToFail :: Monad m => T.Text -> Maybe a -> m a
 maybeToFail _   (Just a) = return a
 maybeToFail err Nothing  = fail $ T.unpack err

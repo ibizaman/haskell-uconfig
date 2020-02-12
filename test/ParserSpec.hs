@@ -7,6 +7,7 @@ where
 import           Prelude                 hiding ( lines
                                                 , words
                                                 )
+import           Data.Functor                   ( ($>) )
 import qualified Test.Hspec                    as H
 
 import           Parser
@@ -21,6 +22,18 @@ spec = do
             parse space "  " `H.shouldBe` Right (2 :: Int)
         H.it "parses greedily" $ do
             parse space "  ab" `H.shouldBe` Right (2 :: Int)
+    H.describe "build" $ do
+        H.it "empty list consumes nothing"
+            $            parse ((build [] :: Parser String) *> word) "abc"
+            `H.shouldBe` Right "abc"
+        H.it "consumes until it fails"
+            $            parse
+                             ((,)
+                             <$> build [chunk "a" $> ("x" :: String), chunk "b" $> "y"]
+                             <*> word
+                             )
+                             "abc"
+            `H.shouldBe` Right ("xy", "c")
     H.describe "word" $ do
         H.it "parses word" $ do
             parse word "abc" `H.shouldBe` Right "abc"
@@ -61,10 +74,26 @@ spec = do
             `H.shouldBe` Right (123.123 :: Float)
     H.describe "line" $ do
         H.it "parses empty line" $ parse line "" `H.shouldBe` Right ""
+        H.it "parses empty line with trailing newline"
+            $            parse line "\n"
+            `H.shouldBe` Right ""
         H.it "parses until eof" $ parse line "one two" `H.shouldBe` Right
             "one two"
         H.it "parses until eol" $ parse line "one two\nthree" `H.shouldBe` Right
             "one two"
+    H.describe "emptyLine" $ do
+        H.it "does not parse empty line without newline"
+            $                 parse emptyLine ""
+            `H.shouldSatisfy` U.isLeft
+        H.it "parses empty line with trailing newline"
+            $            parse emptyLine "\n"
+            `H.shouldBe` Right ()
+        H.it "fails on not empty line"
+            $                 parse emptyLine "  one"
+            `H.shouldSatisfy` U.isLeft
+        H.it "fails on not empty line with trailing newline"
+            $                 parse emptyLine "  one\n"
+            `H.shouldSatisfy` U.isLeft
     H.describe "lines" $ do
         H.it "parses empty line" $ parse lines "" `H.shouldBe` Right []
         H.it "parses multiple lines"

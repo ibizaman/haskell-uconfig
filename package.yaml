@@ -37,6 +37,7 @@ tests:
       - hspec == 2.7.1
       - hspec-core == 2.7.1
       - hspec-discover == 2.7.1
+      - raw-strings-qq
 
 ghc-options:
   - -Wall

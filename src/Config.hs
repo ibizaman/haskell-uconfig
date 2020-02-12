@@ -18,33 +18,42 @@ module Config
     , P.parse
     , flat
     , sectioned
+    , fetchInSection
     , assignment
+    , anyAssignment
     , header
+    , anyHeader
     , section
+    , anySection
     , spaced
     , quoted
+    , plain
     )
 where
 
 
 import           Prelude                 hiding ( Word )
 
+import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
 
 import qualified Parser                        as P
 
 
 -- |Flat is a config consisting of only assignments.
-newtype Flat = Flat [Assignment]
+newtype Flat v = Flat [Assignment v]
   deriving (Show, Eq)
 
 
-newtype Sectioned = Sectioned [(T.Text, [Assignment])]
+-- |Sectioned is a config consisting of sections.
+-- A section starts with a header followed by zero or more assignments.
+-- A header is for example "[my section]".
+newtype Sectioned v = Sectioned [(T.Text, [Assignment v])]
   deriving (Show, Eq)
 
 
 -- |Assignment is a key=value pair.
-data Assignment = Assignment (Spaced (Quoted T.Text)) (Spaced (Quoted T.Text))
+data Assignment v = Assignment (Spaced (Quoted T.Text)) (Spaced (Quoted v))
   deriving (Show, Eq)
 
 
@@ -62,32 +71,65 @@ data Spaced a = Spaced Int Int a
 
 -- |Parses a flat config consisting only of a continuous list of
 -- 'assignment'.
-flat :: P.Parser Flat
-flat = Flat <$> P.newlineSeparated assignment
+flat :: P.Parser v -> P.Parser (Flat v)
+flat valueParser = Flat <$> P.newlineSeparated (anyAssignment valueParser)
 
 
 -- |Parses a flat config with sections.
-sectioned :: P.Parser Sectioned
-sectioned = Sectioned <$> P.some section
+sectioned :: P.Parser v -> P.Parser (Sectioned v)
+sectioned valueParser = Sectioned <$> P.some (anySection valueParser)
 
 
--- |Parses a header which is 'P.words' enclosed in square brackets.
-header :: P.Parser T.Text
-header = P.between "[" "]" P.words <* P.line
+-- |Parses something in current section and backtracks.
+fetchInSection :: P.Parser v -> P.Parser (Maybe v)
+fetchInSection match = P.lookAhead go
+  where
+    go = P.choice
+        [ anyHeader $> Nothing
+        , Just <$> match
+        , P.anySingle *> go
+        , P.eol $> Nothing
+        ]
+
+
+-- |Parses the given header enclosed in square brackets.
+header :: T.Text -> P.Parser ()
+header name = P.between "[" "]" (P.chunk name) <* P.line $> ()
+
+
+-- |Parses the given header enclosed in square brackets.
+anyHeader :: P.Parser T.Text
+anyHeader = P.between "[" "]" P.word <* P.line
 
 
 -- |Parses a header followed by a list of assignment.
-section :: P.Parser (T.Text, [Assignment])
-section = (,) <$> header <*> P.newlineSeparated assignment
+section :: T.Text -> P.Parser v -> P.Parser [Assignment v]
+section name valueParser =
+    header name *> P.newlineSeparated (anyAssignment valueParser)
+
+-- |Parses a header followed by a list of assignment.
+anySection :: P.Parser v -> P.Parser (T.Text, [Assignment v])
+anySection valueParser =
+    (,) <$> anyHeader <*> P.newlineSeparated (anyAssignment valueParser)
 
 
 -- |Parses an assignment which is a key=value pair.
 -- The key and value can be quoted
-assignment :: P.Parser Assignment
-assignment = do
+assignment :: T.Text -> P.Parser v -> P.Parser v
+assignment name valueParser = do
+    _     <- spaced $ quoted (P.chunk name)
+    _     <- P.char '='
+    value <- spaced $ quoted valueParser
+    return $ plain value
+
+
+-- |Parses an assignment which is a key=value pair.
+-- The key and value can be quoted
+anyAssignment :: P.Parser v -> P.Parser (Assignment v)
+anyAssignment valueParser = do
     key   <- spaced $ quoted P.word
     _     <- P.char '='
-    value <- spaced $ quoted P.word
+    value <- spaced $ quoted valueParser
     return $ Assignment key value
 
 
@@ -102,18 +144,25 @@ spaced p = do
 quoted :: P.Parser a -> P.Parser (Quoted a)
 quoted p = P.choice
     [ do
-        _ <- P.char '"'
-        open <- P.space
+        _      <- P.char '"'
+        open   <- P.space
         middle <- p
-        close <- P.space
-        _ <- P.char '"'
+        close  <- P.space
+        _      <- P.char '"'
         return $ DoubleQuoted open close middle
     , do
-        _ <- P.char '\''
-        open <- P.space
+        _      <- P.char '\''
+        open   <- P.space
         middle <- p
-        close <- P.space
-        _ <- P.char '\''
+        close  <- P.space
+        _      <- P.char '\''
         return $ SingleQuoted open close middle
     , NotQuoted <$> p
     ]
+
+
+-- |Removes spaces and quotes.
+plain :: Spaced (Quoted v) -> v
+plain (Spaced _ _ (NotQuoted t       )) = t
+plain (Spaced _ _ (SingleQuoted _ _ t)) = t
+plain (Spaced _ _ (DoubleQuoted _ _ t)) = t
