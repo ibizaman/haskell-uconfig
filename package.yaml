@@ -28,6 +28,7 @@ executables:
     dependencies:
       - uconfig
       - optparse-applicative == 0.14.3.0
+      - nicify-lib == 1.0.1
 
 tests:
   uconfig-test:

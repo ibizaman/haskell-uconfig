@@ -9,6 +9,7 @@ import qualified Data.Text                     as T
 import qualified Options.Applicative           as Args
 import qualified Parser                        as P
 import qualified System.IO                     as SIO
+import qualified Text.Nicify as Nicify
 
 
 data Arguments = ArgParseSystemdService T.Text
@@ -26,7 +27,7 @@ main = arguments >>= \case
                             putStrLn
                                 $  "Error while parsing file: "
                                 <> T.unpack err
-                        Right parsed -> print parsed
+                        Right parsed -> putStrLn $ Nicify.nicify $ show parsed
 
 
 arguments :: IO Arguments
