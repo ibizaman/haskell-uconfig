@@ -27,6 +27,7 @@ executables:
     source-dirs:         app
     dependencies:
       - uconfig
+      - optparse-applicative == 0.14.3.0
 
 tests:
   uconfig-test:
