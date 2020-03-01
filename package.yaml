@@ -39,6 +39,7 @@ tests:
       - hspec == 2.7.1
       - hspec-core == 2.7.1
       - hspec-discover == 2.7.1
+      - hspec-expectations-pretty-diff == 0.7.2.5
       - raw-strings-qq
 
 ghc-options:
