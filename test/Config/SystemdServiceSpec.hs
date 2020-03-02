@@ -252,7 +252,7 @@ WantedBy=default.target
                                                    }
                                    }
                                )
-        H.it "aria2 web service"
+        H.it "laptop mode tools"
             $              P.parse
                                parse
                                [r|[Unit]
@@ -290,15 +290,16 @@ WantedBy=multi-user.target
                                            }
                                    , service =
                                        mempty
-                                           { type_          =
+                                           { type_           =
                                                TOneShot
-                                                   (RemainAfterExit True)
                                                    [ mempty
                                                          { command =
                                                              "/usr/bin/laptop_mode init force"
                                                          }
                                                    ]
-                                           , execStartPre   =
+                                           , remainAfterExit =
+                                               Value $ RemainAfterExit True
+                                           , execStartPre    =
                                                [ mempty
                                                    { command =
                                                        "/bin/rm -f /var/run/laptop-mode-tools/enabled"
@@ -308,13 +309,13 @@ WantedBy=multi-user.target
                                                        "/bin/rm -f /var/run/laptop-mode-tools/state"
                                                    }
                                                ]
-                                           , execStop       =
+                                           , execStop        =
                                                [ mempty
                                                      { command =
                                                          "/usr/bin/laptop_mode init stop"
                                                      }
                                                ]
-                                           , execStopPost   =
+                                           , execStopPost    =
                                                [ mempty
                                                    { command =
                                                        "/bin/rm -f /var/run/laptop-mode-tools/enabled"
@@ -324,18 +325,119 @@ WantedBy=multi-user.target
                                                        "/bin/rm -f /var/run/laptop-mode-tools/state"
                                                    }
                                                ]
-                                           , execReload     =
+                                           , execReload      =
                                                Value $ mempty
                                                    { command =
                                                        "/usr/bin/laptop_mode auto"
                                                    }
-                                           , standardOutput = OJournal
-                                           , standardError  = OJournal
+                                           , standardOutput  = OJournal
+                                           , standardError   = OJournal
                                            , tasksMax = Value TasksMaxInfinity
                                            }
                                    , install = mempty
                                                    { wantedBy =
                                                        ["multi-user.target"]
                                                    }
+                                   }
+                               )
+        H.it "network time service"
+            $              P.parse
+                               parse
+                               [r|[Unit]
+Description=Network Time Service
+After=network.target nss-lookup.target
+Conflicts=systemd-timesyncd.service
+
+[Service]
+Type=forking
+PrivateTmp=true
+ExecStart=/usr/bin/ntpd -g -u ntp:ntp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+|]
+            `HPP.shouldBe` Right
+                               (mempty
+                                   { unit    =
+                                       mempty
+                                           { description =
+                                               "Network Time Service"
+                                           , after       = [ "network.target"
+                                                           , "nss-lookup.target"
+                                                           ]
+                                           , conflicts   =
+                                               ["systemd-timesyncd.service"]
+                                           }
+                                   , service =
+                                       mempty
+                                           { type_      =
+                                               TForking
+                                                   Nothing
+                                                   (mempty
+                                                       { command =
+                                                           "/usr/bin/ntpd -g -u ntp:ntp"
+                                                       }
+                                                   )
+                                           , privateTmp = Value
+                                                              (PrivateTmp True)
+                                           , restart    = Value RAlways
+                                           }
+                                   , install = mempty
+                                                   { wantedBy =
+                                                       ["multi-user.target"]
+                                                   }
+                                   }
+                               )
+        H.it "networking for netctl profile %I"
+            $              P.parse
+                               parse
+                               [r|[Unit]
+Description=Networking for netctl profile %I
+Documentation=man:netctl.profile(5)
+After=network-pre.target
+Before=network.target netctl.service
+Wants=network.target
+
+[Service]
+Type=notify
+NotifyAccess=exec
+RemainAfterExit=yes
+ExecStart=/usr/lib/netctl/network start %I
+ExecStop=/usr/lib/netctl/network stop %I
+|]
+            `HPP.shouldBe` Right
+                               (mempty
+                                   { unit    =
+                                       mempty
+                                           { description   =
+                                               "Networking for netctl profile %I"
+                                           , documentation =
+                                               ["man:netctl.profile(5)"]
+                                           , after = ["network-pre.target"]
+                                           , before        = [ "network.target"
+                                                             , "netctl.service"
+                                                             ]
+                                           , wants         = ["network.target"]
+                                           }
+                                   , service =
+                                       mempty
+                                           { type_           =
+                                               TNotify
+                                                   NAExec
+                                                   (mempty
+                                                       { command =
+                                                           "/usr/lib/netctl/network start %I"
+                                                       }
+                                                   )
+                                           , remainAfterExit =
+                                               Value $ RemainAfterExit True
+                                           , execStop        =
+                                               [ mempty
+                                                     { command =
+                                                         "/usr/lib/netctl/network stop %I"
+                                                     }
+                                               ]
+                                           }
                                    }
                                )

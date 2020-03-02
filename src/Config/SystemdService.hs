@@ -33,6 +33,8 @@ module Config.SystemdService
     , NotifyAccess(..)
     , Output(..)
     , TasksMax(..)
+    , PrivateTmp(..)
+    , Restart(..)
     )
 where
 
@@ -97,6 +99,7 @@ data Unit = Unit
   , after :: [T.Text]
   , wants :: [T.Text]
   , requires :: [T.Text]
+  , conflicts :: [T.Text]
   }
   deriving(Eq, Show)
 
@@ -107,6 +110,7 @@ instance Semigroup Unit where
                   , after         = after a <> after b
                   , wants         = wants a <> wants b
                   , requires      = requires a <> requires b
+                  , conflicts     = conflicts a <> conflicts b
                   }
 
 instance Monoid Unit where
@@ -116,6 +120,7 @@ instance Monoid Unit where
                   , after         = mempty
                   , wants         = mempty
                   , requires      = mempty
+                  , conflicts     = mempty
                   }
 
 
@@ -147,12 +152,15 @@ data Service = Service
   , execReload :: EmptyDefault Exec
   , execStop :: [Exec]
   , execStopPost :: [Exec]
+  , remainAfterExit :: EmptyDefault RemainAfterExit
   , user :: EmptyDefault T.Text
   , group :: EmptyDefault T.Text
   , workingDirectory :: EmptyDefault T.Text
   , standardOutput :: Output
   , standardError :: Output
   , tasksMax :: EmptyDefault TasksMax
+  , restart :: EmptyDefault Restart
+  , privateTmp :: EmptyDefault PrivateTmp
   }
   deriving(Eq, Show)
 
@@ -165,12 +173,15 @@ instance Semigroup Service where
         , execReload       = execReload a <> execReload b
         , execStop         = execStop a <> execStop b
         , execStopPost     = execStopPost a <> execStopPost b
+        , remainAfterExit  = remainAfterExit a <> remainAfterExit b
         , user             = user a <> user b
         , group            = group a <> group b
         , workingDirectory = workingDirectory a <> workingDirectory b
         , standardOutput   = standardOutput a <> standardOutput b
         , standardError    = standardError a <> standardError b
         , tasksMax         = tasksMax a <> tasksMax b
+        , restart          = restart a <> restart b
+        , privateTmp       = privateTmp a <> privateTmp b
         }
 
 instance Monoid Service where
@@ -181,12 +192,15 @@ instance Monoid Service where
                      , execReload       = mempty
                      , execStop         = mempty
                      , execStopPost     = mempty
+                     , remainAfterExit  = mempty
                      , user             = mempty
                      , group            = mempty
                      , workingDirectory = mempty
                      , standardOutput   = mempty
                      , standardError    = mempty
                      , tasksMax         = mempty
+                     , restart          = mempty
+                     , privateTmp       = mempty
                      }
 
 
@@ -196,18 +210,17 @@ data Type
   = TNothing
   | TSimple Exec
   | TExec Exec
-  | TForking PIDFile Exec
-  | TOneShot RemainAfterExit [Exec]
+  | TForking (Maybe PIDFile) Exec
+  | TOneShot [Exec]
   | TDBus BusName Exec
   | TNotify NotifyAccess Exec
   | TIdle Exec
   deriving(Eq, Show)
 
 instance Semigroup Type where
-    a <> TNothing = a
-    TOneShot (RemainAfterExit ar) as <> TOneShot (RemainAfterExit br) bs =
-        TOneShot (RemainAfterExit $ ar || br) (as <> bs)
-    _ <> b = b
+    a           <> TNothing    = a
+    TOneShot as <> TOneShot bs = TOneShot (as <> bs)
+    _           <> b           = b
 
 instance Monoid Type where
     mempty = TNothing
@@ -232,6 +245,8 @@ data InternalService = InternalService
   , iStandardOutput :: Output
   , iStandardError :: Output
   , iTasksMax :: EmptyDefault TasksMax
+  , iRestart :: EmptyDefault Restart
+  , iPrivateTmp :: EmptyDefault PrivateTmp
   }
   deriving(Eq, Show)
 
@@ -255,6 +270,8 @@ instance Semigroup InternalService where
         , iStandardOutput   = iStandardOutput a <> iStandardOutput b
         , iStandardError    = iStandardError a <> iStandardError b
         , iTasksMax         = iTasksMax a <> iTasksMax b
+        , iRestart          = iRestart a <> iRestart b
+        , iPrivateTmp       = iPrivateTmp a <> iPrivateTmp b
         }
 
 instance Monoid InternalService where
@@ -276,6 +293,8 @@ instance Monoid InternalService where
                              , iStandardOutput   = mempty
                              , iStandardError    = mempty
                              , iTasksMax         = mempty
+                             , iRestart          = mempty
+                             , iPrivateTmp       = mempty
                              }
 
 
@@ -329,6 +348,16 @@ instance Monoid TasksMax where
     mempty = TasksMax 0
 
 
+data Restart = RNo
+             | RAlways
+             | ROnSuccess
+             | ROnFailure
+             | ROnAbnormal
+             | ROnAbort
+             | ROnWatchdog
+  deriving(Eq, Show)
+
+
 -- |A convenience type to represent PIDFile=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=
 newtype PIDFile = PIDFile T.Text
@@ -351,6 +380,11 @@ data NotifyAccess
   | NAMain
   | NAExec
   | NAAll
+  deriving(Eq, Show)
+
+-- |A convenience type to represent PrivateTmp=.
+-- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
+newtype PrivateTmp = PrivateTmp Bool
   deriving(Eq, Show)
 
 
@@ -377,6 +411,8 @@ parseUnit = P.build
         <$> C.assignment "Wants" (P.some $ C.spaced $ C.quoted P.word)
     , (\rs -> mempty { requires = C.plain <$> rs })
         <$> C.assignment "Requires" (P.some $ C.spaced $ C.quoted P.word)
+    , (\rs -> mempty { conflicts = C.plain <$> rs })
+        <$> C.assignment "Conflicts" (P.some $ C.spaced $ C.quoted P.word)
     , P.emptyLine $> mempty
     ]
 
@@ -405,12 +441,9 @@ parseService = toService <$> parseInternalType >>= \case
                 Value "exec"   -> TExec <$> last' "exec" iExecStart
                 Value "forking" ->
                     TForking
-                        <$> asEither "iPIDFile" iPIDFile
+                        <$> Right (asMaybe iPIDFile)
                         <*> last' "forking" iExecStart
-                Value "oneshot" ->
-                    TOneShot
-                        <$> asEither "iRemainAfterExit" iRemainAfterExit
-                        <*> Right iExecStart
+                Value "oneshot" -> TOneShot <$> Right iExecStart
                 Value "dbus" ->
                     TDBus
                         <$> asEither "iBusName" iBusName
@@ -428,12 +461,15 @@ parseService = toService <$> parseInternalType >>= \case
                        , execReload       = iExecReload
                        , execStop         = iExecStop
                        , execStopPost     = iExecStopPost
+                       , remainAfterExit  = iRemainAfterExit
                        , user             = iUser
                        , group            = iGroup
                        , workingDirectory = iWorkingDirectory
                        , standardOutput   = iStandardOutput
                        , standardError    = iStandardError
                        , tasksMax         = iTasksMax
+                       , restart          = iRestart
+                       , privateTmp       = iPrivateTmp
                        }
         in
             case t of
@@ -445,6 +481,10 @@ parseService = toService <$> parseInternalType >>= \case
         Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
     last' _ [x     ] = Right x
     last' e (_ : xs) = last' e xs
+
+    asMaybe :: EmptyDefault a -> Maybe a
+    asMaybe Empty     = Nothing
+    asMaybe (Value v) = Just v
 
     asEither :: e -> EmptyDefault a -> Either e a
     asEither e Empty     = Left e
@@ -494,15 +534,26 @@ parseService = toService <$> parseInternalType >>= \case
         , (\e -> mempty { iStandardError = e }) <$> C.assignment
             "StandardError"
             (P.choice [P.chunk "journal" $> OJournal])
-        , (\t -> mempty { iTasksMax = t })
-            <$> (C.assignment
-                    "TasksMax"
-                    (   (Value . TasksMax <$> P.number)
-                    <|> (  P.chunk "infinity"
-                        *> (return $ Value TasksMaxInfinity)
-                        )
-                    )
-                )
+        , (\t -> mempty { iTasksMax = t }) <$> C.assignment
+            "TasksMax"
+            (   (Value . TasksMax <$> P.number)
+            <|> (P.chunk "infinity" $> Value TasksMaxInfinity)
+            )
+        , (\r -> mempty { iRestart = pure r }) <$> C.assignment
+            "Restart"
+            (P.choice
+                [ P.chunk "no" $> RNo
+                , P.chunk "always" $> RAlways
+                , P.chunk "on-success" $> ROnSuccess
+                , P.chunk "on-failure" $> ROnFailure
+                , P.chunk "on-abnormal" $> ROnAbnormal
+                , P.chunk "on-abort" $> ROnAbort
+                , P.chunk "on-watchdog" $> ROnWatchdog
+                ]
+            )
+        , (\p -> mempty { iPrivateTmp = pure $ PrivateTmp p }) <$> C.assignment
+            "PrivateTmp"
+            (P.choice [P.chunk "true" $> True, P.chunk "false" $> False])
         , P.emptyLine $> mempty
         ]
 
