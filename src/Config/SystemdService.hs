@@ -551,6 +551,7 @@ a  <.> b  = a <> "\n" <> b
 a  <..> "" = a
 a  <..> b  = a <> "\n\n" <> b
 
+
 header :: (Eq t, IsString t, Semigroup t) => t -> t -> t
 header _ ""   = ""
 header h body = h <.> body
