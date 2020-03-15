@@ -11,9 +11,9 @@ copyright:           "2020 Pierre Penninckx"
 description:         Please see the README on GitHub at <https://github.com/ibizaman/haskell-uconfig#readme>
 
 dependencies:
-  - base
-  - text
-  - megaparsec
+  - base == 4.12.0.0
+  - text == 1.2.3.1
+  - megaparsec == 7.0.5
 
 default-extensions:
   - OverloadedStrings
@@ -40,7 +40,7 @@ tests:
       - hspec-core == 2.7.1
       - hspec-discover == 2.7.1
       - hspec-expectations-pretty-diff == 0.7.2.5
-      - raw-strings-qq
+      - raw-strings-qq == 1.1
 
 ghc-options:
   - -Wall
