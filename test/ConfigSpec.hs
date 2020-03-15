@@ -87,7 +87,7 @@ spec = do
                                )
         H.it "parses multiple lines with spaces"
             $ parse (flat P.word)
-                    " key  =   value \nkey2=value2\n key3  =  value3 "
+                      " key  =   value \nkey2=value2\n key3  =  value3 "
             `HPP.shouldBe` Right
                                (Flat
                                    [ Assignment
@@ -119,8 +119,9 @@ spec = do
                                    ]
                                )
     H.describe "anyHeader" $ do
-        H.it "parses header" $ parse anyHeader "[section]" `HPP.shouldBe` Right
-            "section"
+        H.it "parses header"
+            $              parse anyHeader "[section]"
+            `HPP.shouldBe` Right "section"
         H.it "parses header with trailing newline"
             $              parse anyHeader "[section]\n"
             `HPP.shouldBe` Right "section"
@@ -161,7 +162,7 @@ spec = do
                                )
         H.it "parses multiple sections"
             $              parse (sectioned P.word)
-                                 "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
+                                   "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"

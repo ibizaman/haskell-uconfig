@@ -10,7 +10,8 @@ Portability : POSIX
 The Config module provides functions for parsing config files.
 -}
 module Config
-    ( Flat(..)
+    ( Config(..)
+    , Flat(..)
     , Sectioned(..)
     , Assignment(..)
     , Quoted(..)
@@ -32,12 +33,19 @@ module Config
 where
 
 
-import           Prelude                 hiding ( Word )
+import           Prelude                 hiding ( Word
+                                                , print
+                                                )
 
 import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
 
 import qualified Parser                        as P
+
+
+class Config a where
+    parser :: P.Parser a
+    printer :: a -> T.Text
 
 
 -- |Flat is a config consisting of only assignments.

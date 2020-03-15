@@ -13,80 +13,79 @@ import qualified Test.Hspec.Expectations.Pretty
 import           Text.RawString.QQ
 
 import           Config.SystemdService
+import qualified Config                        as C
 import qualified Parser                        as P
 
 
 spec :: H.Spec
 spec = do
-    H.describe "parseExec" $ do
-        H.it "parses empty command"
-            $              P.parse parseExec ""
-            `HPP.shouldBe` Right mempty
+    H.describe "parse exec" $ do
+        H.it "parses empty command" $ C.parse C.parser "" `HPP.shouldBe` Right
+            (mempty :: Exec)
         H.it "parses simple command"
-            $              P.parse parseExec "xyz"
-            `HPP.shouldBe` Right (mempty { command = "xyz" })
+            $              C.parse C.parser "xyz"
+            `HPP.shouldBe` Right ((mempty :: Exec) { command = "xyz" })
         H.it "parses simple command with spaces"
-            $              P.parse parseExec "x y z"
-            `HPP.shouldBe` Right (mempty { command = "x y z" })
+            $              C.parse C.parser "x y z"
+            `HPP.shouldBe` Right ((mempty :: Exec) { command = "x y z" })
         H.it "parses command with options"
-            $              P.parse parseExec "@-xy@-z"
+            $              C.parse C.parser "@-xy@-z"
             `HPP.shouldBe` Right
-                               (mempty { command         = "xy@-z"
-                                       , overrideName    = True
-                                       , continueOnError = True
-                                       }
+                               ((mempty :: Exec) { command         = "xy@-z"
+                                                 , overrideName    = True
+                                                 , continueOnError = True
+                                                 }
                                )
     H.describe "parseService" $ do
         H.it "fails if no Type"
-            $              P.parse parseService ""
+            $              C.parse (C.parser :: P.Parser Service) ""
             `HPP.shouldBe` Left
                                "input:1:1:\n  |\n1 | <empty line>\n  | ^\nExpected 'ExecStart' assignment for Type='simple'\n"
         H.it "fails if wrong Type"
-            $              P.parse parseService "Type=other"
+            $              C.parse (C.parser :: P.Parser Service) "Type=other"
             `HPP.shouldBe` Left
                                "input:1:11:\n  |\n1 | Type=other\n  |           ^\nType with unknown value 'other'\n"
         H.it "fails if Type is right but no ExecStart"
-            $              P.parse parseService "Type=simple"
+            $              C.parse (C.parser :: P.Parser Service) "Type=simple"
             `HPP.shouldBe` Left
                                "input:1:12:\n  |\n1 | Type=simple\n  |            ^\nExpected 'ExecStart' assignment for Type='simple'\n"
         H.it "succeeds with Type and ExecStart"
-            $              P.parse parseService "ExecStart=mycmd\nType=simple\n"
+            $              C.parse C.parser "ExecStart=mycmd\nType=simple\n"
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: Service)
                                    { type_ = TSimple
                                                  $ mempty { command = "mycmd" }
                                    }
                                )
         H.it "succeeds with Type and ExecStart"
-            $ P.parse parseService "Type=simple\n\nExecStart=my cmd\n[other]"
+            $ C.parse C.parser "Type=simple\n\nExecStart=my cmd\n[other]"
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: Service)
                                    { type_ = TSimple
                                                  $ mempty { command = "my cmd" }
                                    }
                                )
         H.it "succeeds with Type and ExecStart with spaces"
-            $ P.parse parseService "Type=simple\n\nExecStart=m y cm d\n[other]"
+            $ C.parse C.parser "Type=simple\n\nExecStart=m y cm d\n[other]"
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: Service)
                                    { type_ = TSimple $ mempty
                                                  { command = "m y cm d"
                                                  }
                                    }
                                )
         H.it "succeeds with ExecStart before Type"
-            $ P.parse parseService "\nExecStart=mycmd\n\nType=simple\n[other]"
+            $ C.parse C.parser "\nExecStart=mycmd\n\nType=simple\n[other]"
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: Service)
                                    { type_ = TSimple
                                                  $ mempty { command = "mycmd" }
                                    }
                                )
         H.it "succeeds with ExecStart with spaces before Type"
-            $ P.parse parseService
-                      "\nExecStart=m y cm d\n\nType=simple\n[other]"
+            $ C.parse C.parser "\nExecStart=m y cm d\n\nType=simple\n[other]"
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: Service)
                                    { type_ = TSimple $ mempty
                                                  { command = "m y cm d"
                                                  }
@@ -94,56 +93,79 @@ spec = do
                                )
     H.describe "parseUnit" $ do
         H.it "with before"
-            $ P.parse parseUnit "Before=one two\nBefore=three\n[Service]\n\n"
-            `HPP.shouldBe` Right (mempty { before = ["one", "two", "three"] })
+            $ C.parse C.parser "Before=one two\nBefore=three\n[Service]\n\n"
+            `HPP.shouldBe` Right
+                               ((mempty :: Unit)
+                                   { before = [ Target "one"
+                                              , Target "two"
+                                              , Target "three"
+                                              ]
+                                   }
+                               )
         H.it "with description"
-            $ P.parse parseUnit "\n\nDescription=my service\n[Service]\n\n"
-            `HPP.shouldBe` Right (mempty { description = "my service" })
+            $ C.parse C.parser "\n\nDescription=my service\n[Service]\n\n"
+            `HPP.shouldBe` Right
+                               ((mempty :: Unit)
+                                   { description =
+                                       Value $ Description "my service"
+                                   }
+                               )
     H.describe "parseInstall" $ do
-        H.it "empty"
-            $              P.parse parseUnit "\n[Service]\n\n"
-            `HPP.shouldBe` Right mempty
+        H.it "empty" $ C.parse C.parser "\n[Service]\n\n" `HPP.shouldBe` Right
+            (mempty :: Install)
         H.it "wantedBy"
-            $ P.parse parseInstall "\nWantedBy=default.target\n\n[Service]\n\n"
-            `HPP.shouldBe` Right (mempty { wantedBy = ["default.target"] })
+            $ C.parse C.parser "\nWantedBy=default.target\n\n[Service]\n\n"
+            `HPP.shouldBe` Right
+                               ((mempty :: Install)
+                                   { wantedBy = [Target "default.target"]
+                                   }
+                               )
         H.it "wantedBy and requiredBy"
-            $              P.parse
-                               parseInstall
+            $              C.parse
+                               C.parser
                                "\nWantedBy=default.target\n\nRequiredBy=other.target\n\nRequiredBy=4\nWantedBy=1 2 3\n[Service]\n\n"
             `HPP.shouldBe` Right
-                               (mempty
-                                   { wantedBy   = [ "default.target"
-                                                  , "1"
-                                                  , "2"
-                                                  , "3"
+                               ((mempty :: Install)
+                                   { wantedBy   = [ Target "default.target"
+                                                  , Target "1"
+                                                  , Target "2"
+                                                  , Target "3"
                                                   ]
-                                   , requiredBy = ["other.target", "4"]
+                                   , requiredBy = [ Target "other.target"
+                                                  , Target "4"
+                                                  ]
                                    }
                                )
     H.describe "parse full service" $ do
-       -- H.it "empty headers" $ P.parse parse "[Unit]" `HPP.shouldBe` Right mempty
+       -- H.it "empty headers" $ C.parse parse "[Unit]" `HPP.shouldBe` Right mempty
         H.it "empty headers"
-            $              P.parse parse "[Unit]\n[Service]\n"
-            `HPP.shouldBe` Right mempty
+            $              C.parse C.parser "[Unit]\n[Service]\n"
+            `HPP.shouldBe` Right (mempty :: SystemdService)
         H.it "empty headers"
-            $              P.parse parse "[Unit]\n\n\n[Service]\n\n"
-            `HPP.shouldBe` Right mempty
+            $              C.parse C.parser "[Unit]\n\n\n[Service]\n\n"
+            `HPP.shouldBe` Right (mempty :: SystemdService)
         H.it "with description"
-            $ P.parse parse "[Unit]\n\nDescription=my service\n[Service]\n\n"
+            $ C.parse C.parser "[Unit]\n\nDescription=my service\n[Service]\n\n"
             `HPP.shouldBe` Right
-                               (mempty
-                                   { unit = mempty { description = "my service"
-                                                   }
+                               ((mempty :: SystemdService)
+                                   { unit =
+                                       mempty
+                                           { description =
+                                               Value $ Description "my service"
+                                           }
                                    }
                                )
         H.it "with description and type"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                "[Unit]\nDescription=my service\n[Service]\nType=simple\nExecStart=my cmd\n"
             `HPP.shouldBe` Right
-                               (mempty
-                                   { unit = mempty { description = "my service"
-                                                   }
+                               ((mempty :: SystemdService)
+                                   { unit    =
+                                       mempty
+                                           { description =
+                                               Value $ Description "my service"
+                                           }
                                    , service =
                                        mempty
                                            { type_ =
@@ -155,10 +177,10 @@ spec = do
                                    }
                                )
         H.it "with service"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                "[Service]\nUser=aria2\nGroup=aria2\nWorkingDirectory=/opt/AriaNg-1.1.1\nExecStart=/usr/bin/darkhttpd . --port 6810\n"
-            `HPP.shouldBe` Right mempty
+            `HPP.shouldBe` Right (mempty :: SystemdService)
                                { service =
                                    mempty
                                        { type_            =
@@ -168,17 +190,18 @@ spec = do
                                                        "/usr/bin/darkhttpd . --port 6810"
                                                    }
                                                )
-                                       , user             = Value "aria2"
-                                       , group            = Value "aria2"
+                                       , user             = Value $ User "aria2"
+                                       , group = Value $ Group "aria2"
                                        , workingDirectory =
-                                           Value "/opt/AriaNg-1.1.1"
+                                           Value $ WorkingDirectory
+                                               "/opt/AriaNg-1.1.1"
                                        }
                                }
         H.it "with service and tasksmax=10"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                "[Service]\nTasksMax=10\nExecStart=/usr/bin/darkhttpd . --port 6810\n"
-            `HPP.shouldBe` Right mempty
+            `HPP.shouldBe` Right (mempty :: SystemdService)
                                { service =
                                    mempty
                                        { type_    =
@@ -192,10 +215,10 @@ spec = do
                                        }
                                }
         H.it "with service and tasksmax=infinity"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                "[Service]\nTasksMax=infinity\nExecStart=/usr/bin/darkhttpd . --port 6810\n"
-            `HPP.shouldBe` Right mempty
+            `HPP.shouldBe` Right (mempty :: SystemdService)
                                { service =
                                    mempty
                                        { type_    =
@@ -210,8 +233,8 @@ spec = do
                                }
     H.describe "full-fledge services" $ do
         H.it "aria2 web service"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                [r|[Unit]
 Description=Aria2 Web Service
 After=network.target
@@ -226,19 +249,22 @@ ExecStart=/usr/bin/darkhttpd . --port 6810
 WantedBy=default.target
 |]
             `HPP.shouldBe` Right
-                               (mempty
-                                   { unit    = mempty
-                                                   { description =
-                                                       "Aria2 Web Service"
-                                                   , after = ["network.target"]
-                                                   }
+                               ((mempty :: SystemdService)
+                                   { unit    =
+                                       mempty
+                                           { description =
+                                               Value $ Description
+                                                   "Aria2 Web Service"
+                                           , after = [Target "network.target"]
+                                           }
                                    , service =
                                        mempty
-                                           { user             = Value "aria2"
-                                           , group            = Value "aria2"
+                                           { user = Value $ User "aria2"
+                                           , group = Value $ Group "aria2"
                                            , workingDirectory =
-                                               Value "/opt/AriaNg-1.1.1"
-                                           , type_            =
+                                               Value $ WorkingDirectory
+                                                   "/opt/AriaNg-1.1.1"
+                                           , type_ =
                                                TSimple
                                                    (mempty
                                                        { command =
@@ -246,15 +272,17 @@ WantedBy=default.target
                                                        }
                                                    )
                                            }
-                                   , install = mempty
-                                                   { wantedBy =
-                                                       ["default.target"]
-                                                   }
+                                   , install =
+                                       mempty
+                                           { wantedBy = [ Target
+                                                              "default.target"
+                                                        ]
+                                           }
                                    }
                                )
         H.it "laptop mode tools"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                [r|[Unit]
 Description=Laptop Mode Tools
 Documentation=man:laptop_mode(8) man:laptop-mode.conf(8)
@@ -278,14 +306,20 @@ TasksMax=infinity
 WantedBy=multi-user.target
 |]
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: SystemdService)
                                    { unit    =
                                        mempty
-                                           { description   = "Laptop Mode Tools"
+                                           { description   =
+                                               Value $ Description
+                                                   "Laptop Mode Tools"
                                            , documentation =
-                                               [ "man:laptop_mode(8)"
-                                               , "man:laptop-mode.conf(8)"
-                                               , "http://github.com/rickysarraf/laptop-mode-tools"
+
+                                               [ Documentation
+                                                   "man:laptop_mode(8)"
+                                               , Documentation
+                                                   "man:laptop-mode.conf(8)"
+                                               , Documentation
+                                                   "http://github.com/rickysarraf/laptop-mode-tools"
                                                ]
                                            }
                                    , service =
@@ -330,19 +364,20 @@ WantedBy=multi-user.target
                                                    { command =
                                                        "/usr/bin/laptop_mode auto"
                                                    }
-                                           , standardOutput  = OJournal
-                                           , standardError   = OJournal
+                                           , standardOutput  = Value OJournal
+                                           , standardError   = Value OJournal
                                            , tasksMax = Value TasksMaxInfinity
                                            }
-                                   , install = mempty
-                                                   { wantedBy =
-                                                       ["multi-user.target"]
-                                                   }
+                                   , install =
+                                       mempty
+                                           { wantedBy =
+                                               [Target "multi-user.target"]
+                                           }
                                    }
                                )
         H.it "network time service"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                [r|[Unit]
 Description=Network Time Service
 After=network.target nss-lookup.target
@@ -358,22 +393,27 @@ Restart=always
 WantedBy=multi-user.target
 |]
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: SystemdService)
                                    { unit    =
                                        mempty
                                            { description =
-                                               "Network Time Service"
-                                           , after       = [ "network.target"
-                                                           , "nss-lookup.target"
-                                                           ]
-                                           , conflicts   =
-                                               ["systemd-timesyncd.service"]
+                                               Value $ Description
+                                                   "Network Time Service"
+                                           , after = [ Target "network.target"
+                                                     , Target
+                                                         "nss-lookup.target"
+                                                     ]
+                                           , conflicts =
+
+                                               [ Target
+                                                     "systemd-timesyncd.service"
+                                               ]
                                            }
                                    , service =
                                        mempty
                                            { type_      =
                                                TForking
-                                                   Nothing
+                                                   Empty
                                                    (mempty
                                                        { command =
                                                            "/usr/bin/ntpd -g -u ntp:ntp"
@@ -383,15 +423,16 @@ WantedBy=multi-user.target
                                                               (PrivateTmp True)
                                            , restart    = Value RAlways
                                            }
-                                   , install = mempty
-                                                   { wantedBy =
-                                                       ["multi-user.target"]
-                                                   }
+                                   , install =
+                                       mempty
+                                           { wantedBy =
+                                               [Target "multi-user.target"]
+                                           }
                                    }
                                )
         H.it "networking for netctl profile %I"
-            $              P.parse
-                               parse
+            $              C.parse
+                               C.parser
                                [r|[Unit]
 Description=Networking for netctl profile %I
 Documentation=man:netctl.profile(5)
@@ -407,18 +448,25 @@ ExecStart=/usr/lib/netctl/network start %I
 ExecStop=/usr/lib/netctl/network stop %I
 |]
             `HPP.shouldBe` Right
-                               (mempty
+                               ((mempty :: SystemdService)
                                    { unit    =
                                        mempty
-                                           { description   =
-                                               "Networking for netctl profile %I"
+                                           { description =
+                                               Value
+                                                   $ Description
+                                                         "Networking for netctl profile %I"
                                            , documentation =
-                                               ["man:netctl.profile(5)"]
-                                           , after = ["network-pre.target"]
-                                           , before        = [ "network.target"
-                                                             , "netctl.service"
-                                                             ]
-                                           , wants         = ["network.target"]
+
+                                               [ Documentation
+                                                     "man:netctl.profile(5)"
+                                               ]
+                                           , after = [ Target
+                                                           "network-pre.target"
+                                                     ]
+                                           , before = [ Target "network.target"
+                                                      , Target "netctl.service"
+                                                      ]
+                                           , wants = [Target "network.target"]
                                            }
                                    , service =
                                        mempty

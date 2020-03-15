@@ -15,22 +15,23 @@ Service files.
 https://www.freedesktop.org/software/systemd/man/systemd.service.html
 -}
 module Config.SystemdService
-    ( parse
-    , parseUnit
-    , parseInstall
-    , parseService
-    , parseExec
-    , EmptyDefault(..)
+    ( EmptyDefault(..)
     , SystemdService(..)
     , Unit(..)
+    , Description(..)
+    , Documentation(..)
+    , Target(..)
     , Install(..)
     , Service(..)
     , Type(..)
     , Exec(..)
+    , User(..)
+    , Group(..)
     , PIDFile(..)
     , RemainAfterExit(..)
     , BusName(..)
     , NotifyAccess(..)
+    , WorkingDirectory(..)
     , Output(..)
     , TasksMax(..)
     , PrivateTmp(..)
@@ -70,6 +71,12 @@ instance Applicative EmptyDefault where
     Value f <*> m  = fmap f m
     Empty   <*> _m = Empty
 
+instance (C.Config a) => C.Config (EmptyDefault a) where
+    -- parser = fmap
+
+    printer Empty     = ""
+    printer (Value a) = C.printer a
+
 
 -- |A Systemd Service record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html
@@ -93,13 +100,13 @@ instance Monoid SystemdService where
 -- |A Systemd [Unit] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BUnit%5D%20Section%20Options
 data Unit = Unit
-  { description :: T.Text
-  , documentation :: [T.Text]
-  , before :: [T.Text]
-  , after :: [T.Text]
-  , wants :: [T.Text]
-  , requires :: [T.Text]
-  , conflicts :: [T.Text]
+  { description :: EmptyDefault Description
+  , documentation :: [Documentation]
+  , before :: [Target]
+  , after :: [Target]
+  , wants :: [Target]
+  , requires :: [Target]
+  , conflicts :: [Target]
   }
   deriving(Eq, Show)
 
@@ -123,12 +130,50 @@ instance Monoid Unit where
                   , conflicts     = mempty
                   }
 
+newtype Description = Description T.Text
+    deriving(Eq, Show)
+
+instance C.Config Description where
+    parser = Description <$> P.words
+
+    printer (Description d) = d
+
+
+newtype Documentation = Documentation T.Text
+    deriving(Eq, Show)
+
+instance Semigroup Documentation where
+    Documentation a <> Documentation b = Documentation (a <> b)
+
+instance Monoid Documentation where
+    mempty = Documentation mempty
+
+instance C.Config Documentation where
+    parser = Documentation . C.plain <$> C.spaced (C.quoted P.word)
+
+    printer (Documentation d) = d
+
+
+newtype Target = Target T.Text
+    deriving(Eq, Show)
+
+instance Semigroup Target where
+    Target a <> Target b = Target (a <> b)
+
+instance Monoid Target where
+    mempty = Target mempty
+
+instance C.Config Target where
+    parser = Target . C.plain <$> C.spaced (C.quoted P.word)
+
+    printer (Target t) = t
+
 
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-  { wantedBy :: [T.Text]
-  , requiredBy :: [T.Text]
+  { wantedBy :: [Target]
+  , requiredBy :: [Target]
   }
   deriving(Eq, Show)
 
@@ -153,11 +198,11 @@ data Service = Service
   , execStop :: [Exec]
   , execStopPost :: [Exec]
   , remainAfterExit :: EmptyDefault RemainAfterExit
-  , user :: EmptyDefault T.Text
-  , group :: EmptyDefault T.Text
-  , workingDirectory :: EmptyDefault T.Text
-  , standardOutput :: Output
-  , standardError :: Output
+  , user :: EmptyDefault User
+  , group :: EmptyDefault Group
+  , workingDirectory :: EmptyDefault WorkingDirectory
+  , standardOutput :: EmptyDefault Output
+  , standardError :: EmptyDefault Output
   , tasksMax :: EmptyDefault TasksMax
   , restart :: EmptyDefault Restart
   , privateTmp :: EmptyDefault PrivateTmp
@@ -210,7 +255,7 @@ data Type
   = TNothing
   | TSimple Exec
   | TExec Exec
-  | TForking (Maybe PIDFile) Exec
+  | TForking (EmptyDefault PIDFile) Exec
   | TOneShot [Exec]
   | TDBus BusName Exec
   | TNotify NotifyAccess Exec
@@ -239,11 +284,11 @@ data InternalService = InternalService
   , iExecReload :: EmptyDefault Exec
   , iExecStop :: [Exec]
   , iExecStopPost :: [Exec]
-  , iUser :: EmptyDefault T.Text
-  , iGroup :: EmptyDefault T.Text
-  , iWorkingDirectory :: EmptyDefault T.Text
-  , iStandardOutput :: Output
-  , iStandardError :: Output
+  , iUser :: EmptyDefault User
+  , iGroup :: EmptyDefault Group
+  , iWorkingDirectory :: EmptyDefault WorkingDirectory
+  , iStandardOutput :: EmptyDefault Output
+  , iStandardError :: EmptyDefault Output
   , iTasksMax :: EmptyDefault TasksMax
   , iRestart :: EmptyDefault Restart
   , iPrivateTmp :: EmptyDefault PrivateTmp
@@ -326,20 +371,51 @@ instance Monoid Exec where
                   }
 
 
-data Output = ONothing
-            | OJournal
+newtype User = User T.Text
   deriving(Eq, Show)
 
-instance Semigroup Output where
-    a <> ONothing = a
-    _ <> b        = b
+instance C.Config User where
+    parser = User <$> P.word
 
-instance Monoid Output where
-    mempty = ONothing
+    printer (User u) = u
+
+
+newtype Group = Group T.Text
+  deriving(Eq, Show)
+
+instance C.Config Group where
+    parser = Group <$> P.word
+
+    printer (Group u) = u
+
+
+newtype WorkingDirectory = WorkingDirectory T.Text
+  deriving(Eq, Show)
+
+instance C.Config WorkingDirectory where
+    parser = WorkingDirectory <$> P.word
+
+    printer (WorkingDirectory u) = u
+
+
+data Output = OJournal
+  deriving(Eq, Show)
+
+instance C.Config Output where
+    parser = P.choice [P.chunk "journal" $> OJournal]
+
+    printer OJournal = "journal"
 
 
 data TasksMax = TasksMax Int | TasksMaxInfinity
     deriving(Eq, Show)
+
+instance C.Config TasksMax where
+    parser =
+        (TasksMax <$> P.number) <|> (P.chunk "infinity" $> TasksMaxInfinity)
+
+    printer (TasksMax i)     = T.pack $ show i
+    printer TasksMaxInfinity = "infinity"
 
 instance Semigroup TasksMax where
     _ <> b = b
@@ -357,21 +433,60 @@ data Restart = RNo
              | ROnWatchdog
   deriving(Eq, Show)
 
+instance C.Config Restart where
+    parser = P.choice
+        [ P.chunk "no" $> RNo
+        , P.chunk "always" $> RAlways
+        , P.chunk "on-success" $> ROnSuccess
+        , P.chunk "on-failure" $> ROnFailure
+        , P.chunk "on-abnormal" $> ROnAbnormal
+        , P.chunk "on-abort" $> ROnAbort
+        , P.chunk "on-watchdog" $> ROnWatchdog
+        ]
+
+    printer RNo         = "no"
+    printer RAlways     = "always"
+    printer ROnSuccess  = "on-success"
+    printer ROnFailure  = "on-failure"
+    printer ROnAbnormal = "on-abnormal"
+    printer ROnAbort    = "on-abort"
+    printer ROnWatchdog = "on-watchdog"
+
 
 -- |A convenience type to represent PIDFile=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=
 newtype PIDFile = PIDFile T.Text
   deriving(Eq, Show)
 
+instance C.Config PIDFile where
+    parser = PIDFile <$> P.words
+
+    printer (PIDFile pid) = pid
+
+
 -- |A convenience type to represent RemainAfterExit=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=
 newtype RemainAfterExit = RemainAfterExit Bool
   deriving(Eq, Show)
 
+instance C.Config RemainAfterExit where
+    parser = RemainAfterExit
+        <$> P.choice [P.chunk "yes" $> True, P.chunk "no" $> False]
+
+    printer (RemainAfterExit True ) = "yes"
+    printer (RemainAfterExit False) = "no"
+
+
 -- |A convenience type to represent BusName=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
 newtype BusName = BusName T.Text
   deriving(Eq, Show)
+
+instance C.Config BusName where
+    parser = BusName <$> P.words
+
+    printer (BusName bus) = bus
+
 
 -- |Represents a NotifyAccess=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
@@ -382,189 +497,273 @@ data NotifyAccess
   | NAAll
   deriving(Eq, Show)
 
+instance C.Config NotifyAccess where
+    parser = P.choice
+        [ P.chunk "none" $> NANone
+        , P.chunk "main" $> NAMain
+        , P.chunk "exec" $> NAExec
+        , P.chunk "all" $> NAAll
+        ]
+
+    printer NANone = "none"
+    printer NAMain = "main"
+    printer NAExec = "exec"
+    printer NAAll  = "all"
+
+
 -- |A convenience type to represent PrivateTmp=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
 newtype PrivateTmp = PrivateTmp Bool
   deriving(Eq, Show)
 
+instance C.Config PrivateTmp where
+    parser = PrivateTmp
+        <$> P.choice [P.chunk "true" $> True, P.chunk "false" $> False]
 
--- |Parse a Systemd Service.
-parse :: P.Parser SystemdService
-parse = P.build
-    [ C.header "Unit" *> ((\u -> mempty { unit = u }) <$> parseUnit)
-    , C.header "Install" *> ((\i -> mempty { install = i }) <$> parseInstall)
-    , C.header "Service" *> ((\s -> mempty { service = s }) <$> parseService)
-    ]
+    printer (PrivateTmp True ) = "true"
+    printer (PrivateTmp False) = "false"
 
--- |Parse a Systemd Unit section.
-parseUnit :: P.Parser Unit
-parseUnit = P.build
-    [ (\d -> mempty { description = d }) <$> C.assignment "Description" P.words
-    , (\d -> mempty { documentation = C.plain <$> d }) <$> C.assignment
-        "Documentation"
-        (P.some $ C.spaced $ C.quoted P.word)
-    , (\bs -> mempty { before = C.plain <$> bs })
-        <$> C.assignment "Before" (P.some $ C.spaced $ C.quoted P.word)
-    , (\as -> mempty { after = C.plain <$> as })
-        <$> C.assignment "After" (P.some $ C.spaced $ C.quoted P.word)
-    , (\ws -> mempty { wants = C.plain <$> ws })
-        <$> C.assignment "Wants" (P.some $ C.spaced $ C.quoted P.word)
-    , (\rs -> mempty { requires = C.plain <$> rs })
-        <$> C.assignment "Requires" (P.some $ C.spaced $ C.quoted P.word)
-    , (\rs -> mempty { conflicts = C.plain <$> rs })
-        <$> C.assignment "Conflicts" (P.some $ C.spaced $ C.quoted P.word)
-    , P.emptyLine $> mempty
-    ]
 
--- |Parse a Systemd Install section.
-parseInstall :: P.Parser Install
-parseInstall = P.build
-    [ (\wbs -> mempty { wantedBy = C.plain <$> wbs })
-        <$> C.assignment "WantedBy" (P.some $ C.spaced $ C.quoted P.word)
-    , (\rbs -> mempty { requiredBy = C.plain <$> rbs })
-        <$> C.assignment "RequiredBy" (P.some $ C.spaced $ C.quoted P.word)
-    , P.emptyLine $> mempty
-    ]
+instance C.Config SystemdService where
+    parser = P.build
+        [ C.header "Unit" *> ((\u -> mempty { unit = u }) <$> C.parser)
+        , C.header "Install" *> ((\i -> mempty { install = i }) <$> C.parser)
+        , C.header "Service" *> ((\s -> mempty { service = s }) <$> C.parser)
+        ]
+    printer SystemdService {..} =
+        C.printer unit <..> C.printer install <..> C.printer service
 
--- |Parse a Systemd Service section.
-parseService :: P.Parser Service
-parseService = toService <$> parseInternalType >>= \case
-    Left  e -> fail $ T.unpack e
-    Right s -> return s
-  where
-    toService :: InternalService -> Either T.Text Service
-    toService InternalService {..} =
-        let
-            t = case iType of
-                Empty          -> TSimple <$> last' "simple" iExecStart
-                Value "simple" -> TSimple <$> last' "simple" iExecStart
-                Value "exec"   -> TExec <$> last' "exec" iExecStart
-                Value "forking" ->
-                    TForking
-                        <$> Right (asMaybe iPIDFile)
-                        <*> last' "forking" iExecStart
-                Value "oneshot" -> TOneShot <$> Right iExecStart
-                Value "dbus" ->
-                    TDBus
-                        <$> asEither "iBusName" iBusName
-                        <*> last' "dbus" iExecStart
-                Value "notify" ->
-                    TNotify
-                        <$> asEither "iNotifyAccess" iNotifyAccess
-                        <*> last' "notify" iExecStart
-                Value "idle" -> TIdle <$> last' "idle" iExecStart
-                Value other ->
-                    Left $ "Type with unknown value '" <> other <> "'"
-            s = mempty { execCondition    = iExecCondition
-                       , execStartPre     = iExecStartPre
-                       , execStartPost    = iExecStartPost
-                       , execReload       = iExecReload
-                       , execStop         = iExecStop
-                       , execStopPost     = iExecStopPost
-                       , remainAfterExit  = iRemainAfterExit
-                       , user             = iUser
-                       , group            = iGroup
-                       , workingDirectory = iWorkingDirectory
-                       , standardOutput   = iStandardOutput
-                       , standardError    = iStandardError
-                       , tasksMax         = iTasksMax
-                       , restart          = iRestart
-                       , privateTmp       = iPrivateTmp
-                       }
-        in
-            case t of
-                Left  e  -> Left e
-                Right t' -> Right s { type_ = t' }
 
-    last' :: (IsString e, Semigroup e) => e -> [a] -> Either e a
-    last' e [] =
-        Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
-    last' _ [x     ] = Right x
-    last' e (_ : xs) = last' e xs
+(<=>) :: C.Config c => T.Text -> c -> T.Text
+a <=> b = case C.printer b of
+    "" -> ""
+    t  -> a <> "=" <> t
 
-    asMaybe :: EmptyDefault a -> Maybe a
-    asMaybe Empty     = Nothing
-    asMaybe (Value v) = Just v
 
-    asEither :: e -> EmptyDefault a -> Either e a
-    asEither e Empty     = Left e
-    asEither _ (Value a) = Right a
+(<.>) :: (Eq t, IsString t, Semigroup t) => t -> t -> t
+"" <.> b  = b
+a  <.> "" = a
+a  <.> b  = a <> "\n" <> b
 
-    parseInternalType :: P.Parser InternalService
-    parseInternalType = P.build
-        [ (\e -> mempty { iExecCondition = pure e })
-            <$> C.assignment "ExecCondition" parseExec
-        , (\e -> mempty { iExecStartPre = pure e })
-            <$> C.assignment "ExecStartPre" parseExec
-        , (\e -> mempty { iExecStartPost = pure e })
-            <$> C.assignment "ExecStartPost" parseExec
-        , (\t -> mempty { iType = pure t }) <$> C.assignment "Type" P.word
-        , (\p -> mempty { iPIDFile = pure $ PIDFile p })
-            <$> C.assignment "PIDFile" P.words
-        , (\r -> mempty { iRemainAfterExit = pure $ RemainAfterExit r })
-            <$> C.assignment
-                    "RemainAfterExit"
-                    (P.choice [P.chunk "yes" $> True, P.chunk "no" $> False])
-        , (\b -> mempty { iBusName = pure $ BusName b })
-            <$> C.assignment "BusName" P.words
-        , (\n -> mempty { iNotifyAccess = pure n }) <$> C.assignment
-            "NotifyAccess"
-            (P.choice
-                [ P.chunk "none" $> NANone
-                , P.chunk "main" $> NAMain
-                , P.chunk "exec" $> NAExec
-                , P.chunk "all" $> NAAll
-                ]
-            )
-        , (\e -> mempty { iExecStart = pure e })
-            <$> C.assignment "ExecStart" parseExec
-        , (\e -> mempty { iExecReload = pure e })
-            <$> C.assignment "ExecReload" parseExec
-        , (\e -> mempty { iExecStop = pure e })
-            <$> C.assignment "ExecStop" parseExec
-        , (\e -> mempty { iExecStopPost = pure e })
-            <$> C.assignment "ExecStopPost" parseExec
-        , (\u -> mempty { iUser = pure u }) <$> C.assignment "User" P.words
-        , (\g -> mempty { iGroup = pure g }) <$> C.assignment "Group" P.words
-        , (\w -> mempty { iWorkingDirectory = pure w })
-            <$> C.assignment "WorkingDirectory" P.words
-        , (\o -> mempty { iStandardOutput = o }) <$> C.assignment
-            "StandardOutput"
-            (P.choice [P.chunk "journal" $> OJournal])
-        , (\e -> mempty { iStandardError = e }) <$> C.assignment
-            "StandardError"
-            (P.choice [P.chunk "journal" $> OJournal])
-        , (\t -> mempty { iTasksMax = t }) <$> C.assignment
-            "TasksMax"
-            (   (Value . TasksMax <$> P.number)
-            <|> (P.chunk "infinity" $> Value TasksMaxInfinity)
-            )
-        , (\r -> mempty { iRestart = pure r }) <$> C.assignment
-            "Restart"
-            (P.choice
-                [ P.chunk "no" $> RNo
-                , P.chunk "always" $> RAlways
-                , P.chunk "on-success" $> ROnSuccess
-                , P.chunk "on-failure" $> ROnFailure
-                , P.chunk "on-abnormal" $> ROnAbnormal
-                , P.chunk "on-abort" $> ROnAbort
-                , P.chunk "on-watchdog" $> ROnWatchdog
-                ]
-            )
-        , (\p -> mempty { iPrivateTmp = pure $ PrivateTmp p }) <$> C.assignment
-            "PrivateTmp"
-            (P.choice [P.chunk "true" $> True, P.chunk "false" $> False])
+
+(<..>) :: (Eq t, IsString t, Semigroup t) => t -> t -> t
+"" <..> b  = b
+a  <..> "" = a
+a  <..> b  = a <> "\n\n" <> b
+
+header :: (Eq t, IsString t, Semigroup t) => t -> t -> t
+header _ ""   = ""
+header h body = h <.> body
+
+
+instance C.Config Unit where
+    parser = P.build
+        [ (\d -> mempty { description = pure d })
+            <$> C.assignment "Description" C.parser
+        , (\d -> mempty { documentation = d })
+            <$> C.assignment "Documentation" (P.some C.parser)
+        , (\bs -> mempty { before = bs })
+            <$> C.assignment "Before" (P.some C.parser)
+        , (\as -> mempty { after = as })
+            <$> C.assignment "After" (P.some C.parser)
+        , (\ws -> mempty { wants = ws })
+            <$> C.assignment "Wants" (P.some C.parser)
+        , (\rs -> mempty { requires = rs })
+            <$> C.assignment "Requires" (P.some C.parser)
+        , (\cs -> mempty { conflicts = cs })
+            <$> C.assignment "Conflicts" (P.some C.parser)
         , P.emptyLine $> mempty
         ]
 
+    printer Unit {..} =
+        header "[Unit]"
+            $   (("Description=" <>) . C.printer) description
+            <.> (T.intercalate "\n" . fmap (("Documentation=" <>) . C.printer))
+                    documentation
+            <.> (T.intercalate "\n" . fmap (("Before=" <>) . C.printer)) before
+            <.> (T.intercalate "\n" . fmap (("After=" <>) . C.printer)) after
+            <.> (T.intercalate "\n" . fmap (("Wants=" <>) . C.printer)) wants
+            <.> (T.intercalate "\n" . fmap (("Requires=" <>) . C.printer))
+                    requires
+            <.> (T.intercalate "\n" . fmap (("Conflicts=" <>) . C.printer))
+                    conflicts
 
--- |Parse a Systemd Exec command.
-parseExec :: P.Parser Exec
-parseExec =
-    P.build
-            [ P.char '@' $> (mempty { overrideName = True })
-            , P.char '-' $> (mempty { continueOnError = True })
-            , P.char ':'
-                $> (mempty { noEnvironmentVariableSubstitution = True })
+
+instance C.Config Install where
+    parser = P.build
+        [ (\wbs -> mempty { wantedBy = wbs })
+            <$> C.assignment "WantedBy" (P.some C.parser)
+        , (\rbs -> mempty { requiredBy = rbs })
+            <$> C.assignment "RequiredBy" (P.some C.parser)
+        , P.emptyLine $> mempty
+        ]
+    printer Install {..} =
+        header "[Install]"
+            $   (T.intercalate "\n" . fmap (("WantedBy=" <>) . C.printer))
+                    wantedBy
+            <.> (T.intercalate "\n" . fmap (("RequiredBy=" <>) . C.printer))
+                    requiredBy
+
+
+instance C.Config Service where
+    parser = toService <$> parseInternalType >>= \case
+        Left  e -> fail $ T.unpack e
+        Right s -> return s
+      where
+        toService :: InternalService -> Either T.Text Service
+        toService InternalService {..} =
+            let
+                t = case iType of
+                    Empty          -> TSimple <$> last' "simple" iExecStart
+                    Value "simple" -> TSimple <$> last' "simple" iExecStart
+                    Value "exec"   -> TExec <$> last' "exec" iExecStart
+                    Value "forking" ->
+                        TForking
+                            <$> Right iPIDFile
+                            <*> last' "forking" iExecStart
+                    Value "oneshot" -> TOneShot <$> Right iExecStart
+                    Value "dbus" ->
+                        TDBus
+                            <$> asEither "iBusName" iBusName
+                            <*> last' "dbus" iExecStart
+                    Value "notify" ->
+                        TNotify
+                            <$> asEither "iNotifyAccess" iNotifyAccess
+                            <*> last' "notify" iExecStart
+                    Value "idle" -> TIdle <$> last' "idle" iExecStart
+                    Value other ->
+                        Left $ "Type with unknown value '" <> other <> "'"
+                s = mempty { execCondition    = iExecCondition
+                           , execStartPre     = iExecStartPre
+                           , execStartPost    = iExecStartPost
+                           , execReload       = iExecReload
+                           , execStop         = iExecStop
+                           , execStopPost     = iExecStopPost
+                           , remainAfterExit  = iRemainAfterExit
+                           , user             = iUser
+                           , group            = iGroup
+                           , workingDirectory = iWorkingDirectory
+                           , standardOutput   = iStandardOutput
+                           , standardError    = iStandardError
+                           , tasksMax         = iTasksMax
+                           , restart          = iRestart
+                           , privateTmp       = iPrivateTmp
+                           }
+            in
+                case t of
+                    Left  e  -> Left e
+                    Right t' -> Right s { type_ = t' }
+
+        last' :: (IsString e, Semigroup e) => e -> [a] -> Either e a
+        last' e [] =
+            Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
+        last' _ [x     ] = Right x
+        last' e (_ : xs) = last' e xs
+
+        asEither :: e -> EmptyDefault a -> Either e a
+        asEither e Empty     = Left e
+        asEither _ (Value a) = Right a
+
+        parseInternalType :: P.Parser InternalService
+        parseInternalType = P.build
+            [ (\e -> mempty { iExecCondition = pure e })
+                <$> C.assignment "ExecCondition" C.parser
+            , (\e -> mempty { iExecStartPre = pure e })
+                <$> C.assignment "ExecStartPre" C.parser
+            , (\e -> mempty { iExecStartPost = pure e })
+                <$> C.assignment "ExecStartPost" C.parser
+            , (\t -> mempty { iType = pure t }) <$> C.assignment "Type" P.word
+            , (\p -> mempty { iPIDFile = pure p })
+                <$> C.assignment "PIDFile" C.parser
+            , (\r -> mempty { iRemainAfterExit = pure r })
+                <$> C.assignment "RemainAfterExit" C.parser
+            , (\b -> mempty { iBusName = pure b })
+                <$> C.assignment "BusName" C.parser
+            , (\n -> mempty { iNotifyAccess = pure n })
+                <$> C.assignment "NotifyAccess" C.parser
+            , (\e -> mempty { iExecStart = pure e })
+                <$> C.assignment "ExecStart" C.parser
+            , (\e -> mempty { iExecReload = pure e })
+                <$> C.assignment "ExecReload" C.parser
+            , (\e -> mempty { iExecStop = pure e })
+                <$> C.assignment "ExecStop" C.parser
+            , (\e -> mempty { iExecStopPost = pure e })
+                <$> C.assignment "ExecStopPost" C.parser
+            , (\u -> mempty { iUser = pure u }) <$> C.assignment "User" C.parser
+            , (\g -> mempty { iGroup = pure g })
+                <$> C.assignment "Group" C.parser
+            , (\w -> mempty { iWorkingDirectory = pure w })
+                <$> C.assignment "WorkingDirectory" C.parser
+            , (\o -> mempty { iStandardOutput = pure o })
+                <$> C.assignment "StandardOutput" C.parser
+            , (\e -> mempty { iStandardError = pure e })
+                <$> C.assignment "StandardError" C.parser
+            , (\t -> mempty { iTasksMax = pure t })
+                <$> C.assignment "TasksMax" C.parser
+            , (\r -> mempty { iRestart = pure r })
+                <$> C.assignment "Restart" C.parser
+            , (\p -> mempty { iPrivateTmp = pure $ p })
+                <$> C.assignment "PrivateTmp" C.parser
+            , P.emptyLine $> mempty
             ]
-        <> ((\l -> mempty { command = l }) <$> P.line)
+
+    printer Service {..} =
+        header "[Service]"
+            $   (\case
+                    TNothing     -> ""
+                    TSimple exec -> "Type=simple" <.> "ExecStart" <=> exec
+                    TExec   exec -> "Type=exec" <.> "ExecStart" <=> exec
+                    TForking pidFile exec ->
+                        "Type=forking"
+                            <.> ("PIDFile" <=> pidFile)
+                            <.> ("ExecStart" <=> exec)
+                    TOneShot execs ->
+                        "Type=oneshot"
+                            <.> (T.intercalate "\n" . fmap ("ExecStart" <=>))
+                                    execs
+                    TDBus busName exec ->
+                        "Type=dbus"
+                            <.> "BusName"
+                            <=> busName
+                            <.> "ExecStart"
+                            <=> exec
+                    TNotify notifyAccess exec ->
+                        "Type=notify"
+                            <.> "NotifyAccess"
+                            <=> notifyAccess
+                            <.> "ExecStart"
+                            <=> exec
+                    TIdle exec -> "Type=idle" <.> "ExecStart" <=> exec
+                )
+                    type_
+            <.> ("User" <=> user)
+            <.> ("Group" <=> group)
+            <.> ("WorkingDirectory" <=> workingDirectory)
+            <.> ("StandardOutput" <=> standardOutput)
+            <.> ("StandardError" <=> standardError)
+            <.> ("TasksMax" <=> tasksMax)
+            <.> ("Restart" <=> restart)
+            <.> ("PrivateTmp" <=> privateTmp)
+            <.> ("RemainAfterExit" <=> remainAfterExit)
+            <.> (T.intercalate "\n" . fmap ("ExecCondition=" <=>)) execCondition
+            <.> (T.intercalate "\n" . fmap ("ExecStartPre=" <=>)) execStartPre
+            <.> (T.intercalate "\n" . fmap ("ExecStartPost=" <=>)) execStartPost
+            <.> ("ExecReload=" <=> execReload)
+            <.> (T.intercalate "\n" . fmap ("ExecStop=" <=>)) execStop
+            <.> (T.intercalate "\n" . fmap ("ExecStopPost=" <=>)) execStopPost
+
+
+instance C.Config Exec where
+    parser =
+        P.build
+                [ P.char '@' $> (mempty { overrideName = True })
+                , P.char '-' $> (mempty { continueOnError = True })
+                , P.char ':'
+                    $> (mempty { noEnvironmentVariableSubstitution = True })
+                ]
+            <> ((\l -> mempty { command = l }) <$> P.line)
+    printer Exec {..} =
+        (if overrideName then "@" else "")
+            <> (if continueOnError then "-" else "")
+            <> (if noEnvironmentVariableSubstitution then ":" else "")
+            <> command
