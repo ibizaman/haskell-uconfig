@@ -12,45 +12,48 @@ import qualified System.IO                     as SIO
 import qualified Text.Nicify                   as Nicify
 
 
-data Arguments = ArgParseSystemdService T.Text
+data Arguments = ArgParse Config T.Text
+               | ArgPrint Config T.Text
+
+data Config = CSystemdService
 
 
 main :: IO ()
 main = arguments >>= \case
-    ArgParseSystemdService file ->
-        SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
-            (C.parse C.parser <$> (T.pack <$> SIO.hGetContents handle))
-                >>= \case
-                        Left err ->
-                            putStrLn
-                                $  "Error while parsing file: "
-                                <> T.unpack err
-                        Right parsed -> do
-                            putStrLn $ Nicify.nicify $ show
-                                (parsed :: SystemdService)
-                            putStrLn $ T.unpack $ C.printer parsed
+    ArgParse CSystemdService file -> parse file $ \parsed ->
+        putStrLn $ Nicify.nicify $ show (parsed :: SystemdService)
+    ArgPrint CSystemdService file -> parse file $ \parsed ->
+        putStrLn $ T.unpack $ C.printer (parsed :: SystemdService)
+  where
+    parse file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
+        (C.parse C.parser <$> (T.pack <$> SIO.hGetContents handle)) >>= \case
+            Left err -> putStrLn $ "Error while parsing file: " <> T.unpack err
+            Right parsed -> f parsed
 
 
 arguments :: IO Arguments
 arguments = Args.execParser $ Args.info
-    (         Args.hsubparser
-            (Args.command
-                "parse"
-                (Args.info
-                    (Args.hsubparser
-                        (Args.command
-                            "systemdservice"
-                            (Args.info
-                                (   ArgParseSystemdService
-                                <$> Args.strArgument (Args.metavar "FILE")
-                                )
-                                mempty
-                            )
-                        )
-                    )
-                    (Args.fullDesc <> Args.progDesc "Parse a file")
-                )
-            )
+    (         subparser
+            [ ( "parse"
+              , "Parse a file"
+              , ArgParse <$> configtypeparser <*> Args.strArgument
+                  (Args.metavar "FILE")
+              )
+            , ( "print"
+              , "Parse a file and print it back"
+              , ArgPrint <$> configtypeparser <*> Args.strArgument
+                  (Args.metavar "FILE")
+              )
+            ]
     Args.<**> Args.helper
     )
-    (Args.fullDesc <> Args.progDesc "uconfig")
+    (desc "uconfig")
+  where
+    subparser commands = Args.hsubparser $ foldl
+        (\xs (c, d, t) -> xs <> Args.command c (Args.info t (desc d)))
+        mempty
+        commands
+    configtypeparser = Args.hsubparser
+        (Args.command "systemdservice" (Args.info (pure CSystemdService) mempty)
+        )
+    desc d = Args.fullDesc <> Args.progDesc d
