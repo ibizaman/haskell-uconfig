@@ -7,7 +7,7 @@ where
 import qualified Config                        as C
 import           Config.SystemdService          ( SystemdService(..) )
 import qualified Data.Text                     as T
-import qualified Options.Applicative           as Args
+import qualified Args
 import qualified System.IO                     as SIO
 import qualified Text.Nicify                   as Nicify
 
@@ -33,7 +33,7 @@ main = arguments >>= \case
 
 arguments :: IO Arguments
 arguments = Args.execParser $ Args.info
-    (         subparser
+    (         Args.subparser
             [ ( "parse"
               , "Parse a file"
               , ArgParse <$> configtypeparser <*> Args.strArgument
@@ -47,13 +47,11 @@ arguments = Args.execParser $ Args.info
             ]
     Args.<**> Args.helper
     )
-    (desc "uconfig")
+    (Args.desc "uconfig")
   where
-    subparser commands = Args.hsubparser $ foldl
-        (\xs (c, d, t) -> xs <> Args.command c (Args.info t (desc d)))
-        mempty
-        commands
-    configtypeparser = Args.hsubparser
-        (Args.command "systemdservice" (Args.info (pure CSystemdService) mempty)
-        )
-    desc d = Args.fullDesc <> Args.progDesc d
+    configtypeparser = Args.subparser
+        [ ( "systemdservice"
+          , "Work on SystemdService files"
+          , pure CSystemdService
+          )
+        ]

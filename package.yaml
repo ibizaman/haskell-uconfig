@@ -20,6 +20,8 @@ default-extensions:
 
 library:
   source-dirs: src
+  dependencies:
+    - optparse-applicative == 0.14.3.0
 
 executables:
   uconfig:
@@ -27,7 +29,6 @@ executables:
     source-dirs:         app
     dependencies:
       - uconfig
-      - optparse-applicative == 0.14.3.0
       - nicify-lib == 1.0.1
 
 tests:
