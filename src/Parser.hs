@@ -36,6 +36,7 @@ module Parser
     , MPC.char
     , word
     , words
+    , wordsSepBy
     , number
     , until
 
@@ -140,15 +141,20 @@ word = T.pack <$> MP.some
     )
 
 
--- |Matches one or more 'word' separated by 'space'.
+-- |Matches one or more 'word' separated by one or more spaces.
 words :: Parser T.Text
-words = do
+words = fmap mconcat $ wordsSepBy $ fmap T.pack $ MP.some $ MPC.char ' '
+
+
+-- |Matches one or more 'word' separated by a given string.
+wordsSepBy :: Parser T.Text -> Parser [T.Text]
+wordsSepBy sep = do
     first <- word
     rest  <- MP.many $ MP.try $ do
-        s <- fmap T.pack $ MP.some $ MPC.char ' '
+        s <- sep
         w <- word
         return $ s <> w
-    return $ first <> mconcat rest
+    return $ [first] <> rest
 
 
 -- |Parse a line ending with a newline '\n' or '\r'. Fails on empty
