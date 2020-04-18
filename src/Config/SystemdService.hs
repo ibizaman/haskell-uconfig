@@ -72,7 +72,7 @@ instance Applicative EmptyDefault where
     Empty   <*> _m = Empty
 
 instance (C.Config a) => C.Config (EmptyDefault a) where
-    -- parser = fmap
+    parser = pure <$> C.parser
 
     printer Empty     = ""
     printer (Value a) = C.printer a
@@ -559,7 +559,7 @@ header h body = h <.> body
 
 instance C.Config Unit where
     parser = P.build
-        [ (\d -> mempty { description = pure d })
+        [ (\d -> mempty { description = d })
             <$> C.assignment "Description" C.parser
         , (\d -> mempty { documentation = d })
             <$> C.assignment "Documentation" (P.some C.parser)
@@ -674,36 +674,35 @@ instance C.Config Service where
             , (\e -> mempty { iExecStartPost = pure e })
                 <$> C.assignment "ExecStartPost" C.parser
             , (\t -> mempty { iType = pure t }) <$> C.assignment "Type" P.word
-            , (\p -> mempty { iPIDFile = pure p })
+            , (\p -> mempty { iPIDFile = p })
                 <$> C.assignment "PIDFile" C.parser
-            , (\r -> mempty { iRemainAfterExit = pure r })
+            , (\r -> mempty { iRemainAfterExit = r })
                 <$> C.assignment "RemainAfterExit" C.parser
-            , (\b -> mempty { iBusName = pure b })
+            , (\b -> mempty { iBusName = b })
                 <$> C.assignment "BusName" C.parser
-            , (\n -> mempty { iNotifyAccess = pure n })
+            , (\n -> mempty { iNotifyAccess = n })
                 <$> C.assignment "NotifyAccess" C.parser
             , (\e -> mempty { iExecStart = pure e })
                 <$> C.assignment "ExecStart" C.parser
-            , (\e -> mempty { iExecReload = pure e })
+            , (\e -> mempty { iExecReload = e })
                 <$> C.assignment "ExecReload" C.parser
             , (\e -> mempty { iExecStop = pure e })
                 <$> C.assignment "ExecStop" C.parser
             , (\e -> mempty { iExecStopPost = pure e })
                 <$> C.assignment "ExecStopPost" C.parser
-            , (\u -> mempty { iUser = pure u }) <$> C.assignment "User" C.parser
-            , (\g -> mempty { iGroup = pure g })
-                <$> C.assignment "Group" C.parser
-            , (\w -> mempty { iWorkingDirectory = pure w })
+            , (\u -> mempty { iUser = u }) <$> C.assignment "User" C.parser
+            , (\g -> mempty { iGroup = g }) <$> C.assignment "Group" C.parser
+            , (\w -> mempty { iWorkingDirectory = w })
                 <$> C.assignment "WorkingDirectory" C.parser
-            , (\o -> mempty { iStandardOutput = pure o })
+            , (\o -> mempty { iStandardOutput = o })
                 <$> C.assignment "StandardOutput" C.parser
-            , (\e -> mempty { iStandardError = pure e })
+            , (\e -> mempty { iStandardError = e })
                 <$> C.assignment "StandardError" C.parser
-            , (\t -> mempty { iTasksMax = pure t })
+            , (\t -> mempty { iTasksMax = t })
                 <$> C.assignment "TasksMax" C.parser
-            , (\r -> mempty { iRestart = pure r })
+            , (\r -> mempty { iRestart = r })
                 <$> C.assignment "Restart" C.parser
-            , (\p -> mempty { iPrivateTmp = pure $ p })
+            , (\p -> mempty { iPrivateTmp = p })
                 <$> C.assignment "PrivateTmp" C.parser
             , P.emptyLine $> mempty
             ]
