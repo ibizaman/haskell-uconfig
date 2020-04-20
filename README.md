@@ -45,3 +45,10 @@ To download it, follow these steps:
 3. Unzip it with `unzip hs-template-project.zip`
 4. set the executable permission bit with `chmod a+x hs-template-project/hs-template-project`
 5. run it with `./hs-template-project/hs-template-project` and you should see printed `"Hello World"`.
+
+## TODO
+
+Investigate diff packages:
+- https://hackage.haskell.org/package/diff-0.1.0.0/docs/Diff.html
+- https://hackage.haskell.org/package/tree-diff-0.1/docs/Data-TreeDiff.html
+- https://hackage.haskell.org/package/gdiff-1.1/docs/Data-Generic-Diff.html
