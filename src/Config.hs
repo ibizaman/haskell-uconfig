@@ -16,6 +16,9 @@ module Config
     , Assignment(..)
     , Quoted(..)
     , Spaced(..)
+    , Path(..)
+    , PathValue(..)
+    , GenerateError(..)
     , P.parse
     , flat
     , sectioned
@@ -29,6 +32,9 @@ module Config
     , spaced
     , quoted
     , plain
+    , pathValue
+    , path
+    , generate
     )
 where
 
@@ -46,6 +52,50 @@ import qualified Parser                        as P
 class Config a where
     parser :: P.Parser a
     printer :: a -> T.Text
+    gen :: PathValue -> Either GenerateError a
+
+generate :: (Monoid a, Config a) => [PathValue] -> Either GenerateError a
+generate = foldMaybe mempty
+  where
+    foldMaybe
+        :: (Semigroup a, Config a) => a -> [PathValue] -> Either GenerateError a
+    foldMaybe acc []         = return acc
+    foldMaybe acc (pv : pvs) = do
+        m <- gen pv
+        foldMaybe (acc <> m) pvs
+
+data GenerateError = UnknownPath Path | ParseError Path T.Text
+    deriving(Eq)
+
+instance Show GenerateError where
+    show (UnknownPath p) = "Unknown path '" <> show p <> "'"
+    show (ParseError p err) =
+        "Could not parse path '" <> show p <> "': " <> T.unpack err
+
+
+-- |Path is a location in a 'Config'.
+newtype Path = Path [T.Text]
+    deriving(Eq)
+
+instance Show Path where
+    show (Path p) = T.unpack $ T.intercalate "." p
+
+path :: P.Parser Path
+path = fmap (Path . T.splitOn ".") P.words
+
+-- |PathValue is a 'Path' associated with a 'Value'. It is used to set
+-- a value somewhere in a 'Config'.
+data PathValue = PathValue Path T.Text
+  deriving(Eq)
+
+instance Show PathValue where
+    show (PathValue p v) = show p <> "=" <> T.unpack v
+
+pathValue :: P.Parser PathValue
+pathValue = do
+    p <- path
+    _ <- P.chunk "="
+    PathValue p <$> P.words
 
 
 -- |Flat is a config consisting of only assignments.

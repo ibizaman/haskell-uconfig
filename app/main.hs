@@ -14,6 +14,8 @@ import qualified Text.Nicify                   as Nicify
 
 data Arguments = ArgParse Config T.Text
                | ArgPrint Config T.Text
+               | ArgGenerate Config [C.PathValue]
+               | ArgWrite Config T.Text [C.PathValue]
 
 data Config = CSystemdService
 
@@ -24,11 +26,21 @@ main = arguments >>= \case
         putStrLn $ Nicify.nicify $ show (parsed :: SystemdService)
     ArgPrint CSystemdService file -> parse file $ \parsed ->
         putStrLn $ T.unpack $ C.printer (parsed :: SystemdService)
+    ArgGenerate CSystemdService pathValues -> case C.generate pathValues of
+        Left err -> print err
+        Right content ->
+            putStrLn $ T.unpack $ C.printer (content :: SystemdService)
+    ArgWrite CSystemdService file pathValues -> case C.generate pathValues of
+        Left err -> print err
+        Right content ->
+            write file $ T.unpack $ C.printer (content :: SystemdService)
   where
     parse file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
         (C.parse C.parser <$> (T.pack <$> SIO.hGetContents handle)) >>= \case
             Left err -> putStrLn $ "Error while parsing file: " <> T.unpack err
             Right parsed -> f parsed
+
+    write file = SIO.writeFile (T.unpack file)
 
 
 arguments :: IO Arguments
@@ -43,6 +55,24 @@ arguments = Args.execParser $ Args.info
               , "Parse a file and print it back"
               , ArgPrint <$> configtypeparser <*> Args.strArgument
                   (Args.metavar "FILE")
+              )
+            , ( "generate"
+              , "Generate a file"
+              , ArgGenerate
+              <$> configtypeparser
+              <*> (Args.some $ Args.argument (Args.parsecArg C.pathValue)
+                                             (Args.metavar "PATHVALUE...")
+                  )
+              )
+            , ( "write"
+              , "Write a file"
+              , ArgWrite
+              <$> configtypeparser
+              <*> Args.strArgument (Args.metavar "FILE")
+              <*> (Args.some $ Args.argument
+                      (Args.parsecArg C.pathValue)
+                      (Args.metavar "PATHVALUE...")
+                  )
               )
             ]
     Args.<**> Args.helper

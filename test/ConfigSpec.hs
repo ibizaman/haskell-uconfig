@@ -201,3 +201,21 @@ spec = do
         H.it "found x<space>y"
             $ parse (fetchInSection (P.chunk "x y")) "\na b\n\nx y\n\n[s2]\n"
             `HPP.shouldBe` Right (Just "x y")
+    H.describe "path" $ do
+        H.it "one path" $ parse path "one" `HPP.shouldBe` Right (Path ["one"])
+        H.it "three paths" $ parse path "one.two.three" `HPP.shouldBe` Right
+            (Path ["one", "two", "three"])
+    H.describe "pathValue" $ do
+        H.it "is printed correctly"
+            $              show (PathValue (Path ["one", "two"]) "three")
+            `HPP.shouldBe` "one.two=three"
+        H.it "fails on empty" $ parse pathValue "" `HPP.shouldSatisfy` U.isLeft
+        H.it "fails without equal"
+            $                   parse pathValue "onetwo"
+            `HPP.shouldSatisfy` U.isLeft
+        H.it "parses root-level assignment"
+            $              parse pathValue "one=two"
+            `HPP.shouldBe` Right (PathValue (Path ["one"]) "two")
+        H.it "parses nested assignment"
+            $              parse pathValue "one.two=three"
+            `HPP.shouldBe` Right (PathValue (Path ["one", "two"]) "three")

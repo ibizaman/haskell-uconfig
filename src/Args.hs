@@ -10,7 +10,7 @@ module Args
     , (Args.<**>)
 
       -- re-exports from Parser
-    , P.some
+    , CApp.some
 
       -- Helpers
     , subparser
@@ -20,6 +20,7 @@ module Args
 where
 
 import qualified Config                        as C
+import qualified Control.Applicative           as CApp
 import qualified Data.Text                     as T
 import qualified Options.Applicative           as Args
 import qualified Parser                        as P

@@ -45,8 +45,10 @@ import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
 import           Data.String                    ( IsString )
 import qualified Parser                        as P
-
 import qualified Config                        as C
+import           Utils                          ( mapLeft
+                                                , mapRight
+                                                )
 
 
 -- |Value that can be empty. It's Maybe with a different Semigroup
@@ -76,6 +78,10 @@ instance (C.Config a) => C.Config (EmptyDefault a) where
 
     printer Empty     = ""
     printer (Value a) = C.printer a
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |A Systemd Service record.
@@ -138,6 +144,10 @@ instance C.Config Description where
 
     printer (Description d) = d
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 newtype Documentation = Documentation T.Text
     deriving(Eq, Show)
@@ -153,6 +163,10 @@ instance C.Config Documentation where
 
     printer (Documentation d) = d
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 newtype Target = Target T.Text
     deriving(Eq, Show)
@@ -167,6 +181,10 @@ instance C.Config Target where
     parser = Target . C.plain <$> C.spaced (C.quoted P.word)
 
     printer (Target t) = t
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |A Systemd [Install] record.
@@ -379,6 +397,10 @@ instance C.Config User where
 
     printer (User u) = u
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 newtype Group = Group T.Text
   deriving(Eq, Show)
@@ -387,6 +409,10 @@ instance C.Config Group where
     parser = Group <$> P.word
 
     printer (Group u) = u
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 newtype WorkingDirectory = WorkingDirectory T.Text
@@ -397,6 +423,10 @@ instance C.Config WorkingDirectory where
 
     printer (WorkingDirectory u) = u
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 data Output = OJournal
   deriving(Eq, Show)
@@ -405,6 +435,10 @@ instance C.Config Output where
     parser = P.choice [P.chunk "journal" $> OJournal]
 
     printer OJournal = "journal"
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 data TasksMax = TasksMax Int | TasksMaxInfinity
@@ -416,6 +450,10 @@ instance C.Config TasksMax where
 
     printer (TasksMax i)     = T.pack $ show i
     printer TasksMaxInfinity = "infinity"
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 instance Semigroup TasksMax where
     _ <> b = b
@@ -452,6 +490,10 @@ instance C.Config Restart where
     printer ROnAbort    = "on-abort"
     printer ROnWatchdog = "on-watchdog"
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 -- |A convenience type to represent PIDFile=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=
@@ -462,6 +504,10 @@ instance C.Config PIDFile where
     parser = PIDFile <$> P.words
 
     printer (PIDFile pid) = pid
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |A convenience type to represent RemainAfterExit=.
@@ -476,6 +522,10 @@ instance C.Config RemainAfterExit where
     printer (RemainAfterExit True ) = "yes"
     printer (RemainAfterExit False) = "no"
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 -- |A convenience type to represent BusName=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
@@ -486,6 +536,10 @@ instance C.Config BusName where
     parser = BusName <$> P.words
 
     printer (BusName bus) = bus
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |Represents a NotifyAccess=.
@@ -510,6 +564,10 @@ instance C.Config NotifyAccess where
     printer NAExec = "exec"
     printer NAAll  = "all"
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 -- |A convenience type to represent PrivateTmp=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
@@ -523,6 +581,10 @@ instance C.Config PrivateTmp where
     printer (PrivateTmp True ) = "true"
     printer (PrivateTmp False) = "false"
 
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
+
 
 instance C.Config SystemdService where
     parser = P.build
@@ -532,6 +594,12 @@ instance C.Config SystemdService where
         ]
     printer SystemdService {..} =
         C.printer unit <..> C.printer install <..> C.printer service
+
+    gen (C.PathValue (C.Path path) value) = case path of
+        ("Unit" : rest) -> (\u -> mempty { unit = u })
+            <$> C.gen (C.PathValue (C.Path rest) value)
+
+        _ -> Left $ C.UnknownPath (C.Path path)
 
 
 (<=>) :: C.Config c => T.Text -> c -> T.Text
@@ -589,6 +657,37 @@ instance C.Config Unit where
             <.> (T.intercalate "\n" . fmap (("Conflicts=" <>) . C.printer))
                     conflicts
 
+    gen (C.PathValue (C.Path path) value) = case path of
+        ["Description"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { description = v })
+                $ C.parse C.parser value
+        ["Documentation"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { documentation = v })
+                $ C.parse (P.some C.parser) value
+        ["Before"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { before = v })
+                $ C.parse (P.some C.parser) value
+        ["After"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { after = v })
+                $ C.parse (P.some C.parser) value
+        ["Wants"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { wants = v })
+                $ C.parse (P.some C.parser) value
+        ["Requires"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { requires = v })
+                $ C.parse (P.some C.parser) value
+        ["Conflicts"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { conflicts = v })
+                $ C.parse (P.some C.parser) value
+        _ -> Left $ C.UnknownPath (C.Path path)
+
 
 instance C.Config Install where
     parser = P.build
@@ -605,66 +704,23 @@ instance C.Config Install where
             <.> (T.intercalate "\n" . fmap (("RequiredBy=" <>) . C.printer))
                     requiredBy
 
+    gen (C.PathValue (C.Path path) value) = case path of
+        ["WantedBy"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { wantedBy = v })
+                $ C.parse (P.some C.parser) value
+        ["RequiredBy"] ->
+            mapLeft (C.ParseError $ C.Path path)
+                $ mapRight (\v -> mempty { requiredBy = v })
+                $ C.parse (P.some C.parser) value
+        _ -> Left $ C.UnknownPath (C.Path path)
+
 
 instance C.Config Service where
     parser = toService <$> parseInternalType >>= \case
         Left  e -> fail $ T.unpack e
         Right s -> return s
       where
-        toService :: InternalService -> Either T.Text Service
-        toService InternalService {..} =
-            let
-                t = case iType of
-                    Empty          -> TSimple <$> last' "simple" iExecStart
-                    Value "simple" -> TSimple <$> last' "simple" iExecStart
-                    Value "exec"   -> TExec <$> last' "exec" iExecStart
-                    Value "forking" ->
-                        TForking
-                            <$> Right iPIDFile
-                            <*> last' "forking" iExecStart
-                    Value "oneshot" -> TOneShot <$> Right iExecStart
-                    Value "dbus" ->
-                        TDBus
-                            <$> asEither "iBusName" iBusName
-                            <*> last' "dbus" iExecStart
-                    Value "notify" ->
-                        TNotify
-                            <$> asEither "iNotifyAccess" iNotifyAccess
-                            <*> last' "notify" iExecStart
-                    Value "idle" -> TIdle <$> last' "idle" iExecStart
-                    Value other ->
-                        Left $ "Type with unknown value '" <> other <> "'"
-                s = mempty { execCondition    = iExecCondition
-                           , execStartPre     = iExecStartPre
-                           , execStartPost    = iExecStartPost
-                           , execReload       = iExecReload
-                           , execStop         = iExecStop
-                           , execStopPost     = iExecStopPost
-                           , remainAfterExit  = iRemainAfterExit
-                           , user             = iUser
-                           , group            = iGroup
-                           , workingDirectory = iWorkingDirectory
-                           , standardOutput   = iStandardOutput
-                           , standardError    = iStandardError
-                           , tasksMax         = iTasksMax
-                           , restart          = iRestart
-                           , privateTmp       = iPrivateTmp
-                           }
-            in
-                case t of
-                    Left  e  -> Left e
-                    Right t' -> Right s { type_ = t' }
-
-        last' :: (IsString e, Semigroup e) => e -> [a] -> Either e a
-        last' e [] =
-            Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
-        last' _ [x     ] = Right x
-        last' e (_ : xs) = last' e xs
-
-        asEither :: e -> EmptyDefault a -> Either e a
-        asEither e Empty     = Left e
-        asEither _ (Value a) = Right a
-
         parseInternalType :: P.Parser InternalService
         parseInternalType = P.build
             [ (\e -> mempty { iExecCondition = pure e })
@@ -752,6 +808,140 @@ instance C.Config Service where
             <.> (T.intercalate "\n" . fmap ("ExecStop=" <=>)) execStop
             <.> (T.intercalate "\n" . fmap ("ExecStopPost=" <=>)) execStopPost
 
+    gen (C.PathValue (C.Path path) value) =
+        toService <$> parseInternal >>= \case
+            Left  e -> fail $ T.unpack e
+            Right s -> return s
+      where
+        parseInternal = case path of
+            ["ExecCondition"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecCondition = v })
+                    $ C.parse (P.some C.parser) value
+            ["ExecStartPre"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecStartPre = v })
+                    $ C.parse (P.some C.parser) value
+            ["ExecStartPost"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecStartPost = v })
+                    $ C.parse (P.some C.parser) value
+            ["Type"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iType = pure v })
+                    $ C.parse P.word value
+            ["PIDFile"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iPIDFile = v })
+                    $ C.parse C.parser value
+            ["RemainAfterExit"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iRemainAfterExit = v })
+                    $ C.parse C.parser value
+            ["BusName"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iBusName = v })
+                    $ C.parse C.parser value
+            ["NotifyAccess"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iNotifyAccess = v })
+                    $ C.parse C.parser value
+            ["ExecReload"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecReload = v })
+                    $ C.parse C.parser value
+            ["ExecStop"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecStop = v })
+                    $ C.parse (P.some C.parser) value
+            ["ExecStopPost"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iExecStopPost = v })
+                    $ C.parse (P.some C.parser) value
+            ["User"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iUser = v })
+                    $ C.parse C.parser value
+            ["Group"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iGroup = v })
+                    $ C.parse C.parser value
+            ["WorkingDirectory"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iWorkingDirectory = v })
+                    $ C.parse C.parser value
+            ["StandardOutput"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iStandardOutput = v })
+                    $ C.parse C.parser value
+            ["StandardError"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iStandardError = v })
+                    $ C.parse C.parser value
+            ["TasksMax"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iTasksMax = v })
+                    $ C.parse C.parser value
+            ["Restart"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iRestart = v })
+                    $ C.parse C.parser value
+            ["PrivateTmp"] ->
+                mapLeft (C.ParseError $ C.Path path)
+                    $ mapRight (\v -> mempty { iPrivateTmp = v })
+                    $ C.parse C.parser value
+            _ -> Left $ C.UnknownPath (C.Path path)
+
+typeFromInternalService :: InternalService -> Either T.Text Type
+typeFromInternalService InternalService {..} = case iType of
+    Empty          -> TSimple <$> last' "simple" iExecStart
+    Value "simple" -> TSimple <$> last' "simple" iExecStart
+    Value "exec"   -> TExec <$> last' "exec" iExecStart
+    Value "forking" ->
+        TForking <$> Right iPIDFile <*> last' "forking" iExecStart
+    Value "oneshot" -> TOneShot <$> Right iExecStart
+    Value "dbus" ->
+        TDBus <$> asEither "iBusName" iBusName <*> last' "dbus" iExecStart
+    Value "notify" ->
+        TNotify
+            <$> asEither "iNotifyAccess" iNotifyAccess
+            <*> last' "notify" iExecStart
+    Value "idle" -> TIdle <$> last' "idle" iExecStart
+    Value other  -> Left $ "Type with unknown value '" <> other <> "'"
+  where
+    last' :: (IsString e, Semigroup e) => e -> [a] -> Either e a
+    last' e [] =
+        Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
+    last' _ [x     ] = Right x
+    last' e (_ : xs) = last' e xs
+
+    asEither :: e -> EmptyDefault a -> Either e a
+    asEither e Empty     = Left e
+    asEither _ (Value a) = Right a
+
+
+toService :: InternalService -> Either T.Text Service
+toService i@InternalService {..} =
+    let s = mempty { execCondition    = iExecCondition
+                   , execStartPre     = iExecStartPre
+                   , execStartPost    = iExecStartPost
+                   , execReload       = iExecReload
+                   , execStop         = iExecStop
+                   , execStopPost     = iExecStopPost
+                   , remainAfterExit  = iRemainAfterExit
+                   , user             = iUser
+                   , group            = iGroup
+                   , workingDirectory = iWorkingDirectory
+                   , standardOutput   = iStandardOutput
+                   , standardError    = iStandardError
+                   , tasksMax         = iTasksMax
+                   , restart          = iRestart
+                   , privateTmp       = iPrivateTmp
+                   }
+    in  case typeFromInternalService i of
+            Left  e  -> Left e
+            Right t' -> Right s { type_ = t' }
+
 
 instance C.Config Exec where
     parser =
@@ -767,3 +957,7 @@ instance C.Config Exec where
             <> (if continueOnError then "-" else "")
             <> (if noEnvironmentVariableSubstitution then ":" else "")
             <> command
+
+    gen (C.PathValue (C.Path []) value) =
+        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
+    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)

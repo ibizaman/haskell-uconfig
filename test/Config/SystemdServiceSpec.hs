@@ -489,3 +489,42 @@ ExecStop=/usr/lib/netctl/network stop %I
                                            }
                                    }
                                )
+
+    H.describe "generate" $ do
+        H.it "with wrong path"
+            $ (C.generate [C.PathValue (C.Path ["hello"]) "one"] :: Either
+                    C.GenerateError
+                    SystemdService
+              )
+            `HPP.shouldBe` Left (C.UnknownPath (C.Path ["hello"]))
+        H.it "with description"
+            $              (C.generate
+                               [ C.PathValue (C.Path ["Unit", "Description"])
+                                             "my description"
+                               ] :: Either C.GenerateError SystemdService
+                           )
+            `HPP.shouldBe` Right mempty
+                               { unit =
+                                   mempty
+                                       { description =
+                                           Value $ Description "my description"
+                                       }
+                               }
+        H.it "with description and after"
+            $              (C.generate
+                               [ C.PathValue (C.Path ["Unit", "Description"])
+                                             "my description"
+                               , C.PathValue (C.Path ["Unit", "After"]) "target1 target2"
+                               ] :: Either C.GenerateError SystemdService
+                           )
+            `HPP.shouldBe` Right mempty
+                               { unit =
+                                   mempty
+                                       { description =
+                                           Value $ Description "my description"
+                                       , after       =
+                                           [ Target "target1"
+                                           , Target "target2"
+                                           ]
+                                       }
+                               }
