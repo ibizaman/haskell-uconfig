@@ -79,10 +79,6 @@ instance (C.Config a) => C.Config (EmptyDefault a) where
     printer Empty     = ""
     printer (Value a) = C.printer a
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 -- |A Systemd Service record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html
@@ -144,10 +140,6 @@ instance C.Config Description where
 
     printer (Description d) = d
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 newtype Documentation = Documentation T.Text
     deriving(Eq, Show)
@@ -163,10 +155,6 @@ instance C.Config Documentation where
 
     printer (Documentation d) = d
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 newtype Target = Target T.Text
     deriving(Eq, Show)
@@ -181,10 +169,6 @@ instance C.Config Target where
     parser = Target . C.plain <$> C.spaced (C.quoted P.word)
 
     printer (Target t) = t
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |A Systemd [Install] record.
@@ -397,10 +381,6 @@ instance C.Config User where
 
     printer (User u) = u
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 newtype Group = Group T.Text
   deriving(Eq, Show)
@@ -409,10 +389,6 @@ instance C.Config Group where
     parser = Group <$> P.word
 
     printer (Group u) = u
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 newtype WorkingDirectory = WorkingDirectory T.Text
@@ -423,10 +399,6 @@ instance C.Config WorkingDirectory where
 
     printer (WorkingDirectory u) = u
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 data Output = OJournal
   deriving(Eq, Show)
@@ -435,10 +407,6 @@ instance C.Config Output where
     parser = P.choice [P.chunk "journal" $> OJournal]
 
     printer OJournal = "journal"
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 data TasksMax = TasksMax Int | TasksMaxInfinity
@@ -451,9 +419,6 @@ instance C.Config TasksMax where
     printer (TasksMax i)     = T.pack $ show i
     printer TasksMaxInfinity = "infinity"
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 instance Semigroup TasksMax where
     _ <> b = b
@@ -490,10 +455,6 @@ instance C.Config Restart where
     printer ROnAbort    = "on-abort"
     printer ROnWatchdog = "on-watchdog"
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 -- |A convenience type to represent PIDFile=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=
@@ -504,10 +465,6 @@ instance C.Config PIDFile where
     parser = PIDFile <$> P.words
 
     printer (PIDFile pid) = pid
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |A convenience type to represent RemainAfterExit=.
@@ -522,10 +479,6 @@ instance C.Config RemainAfterExit where
     printer (RemainAfterExit True ) = "yes"
     printer (RemainAfterExit False) = "no"
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 -- |A convenience type to represent BusName=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
@@ -536,10 +489,6 @@ instance C.Config BusName where
     parser = BusName <$> P.words
 
     printer (BusName bus) = bus
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 -- |Represents a NotifyAccess=.
@@ -564,10 +513,6 @@ instance C.Config NotifyAccess where
     printer NAExec = "exec"
     printer NAAll  = "all"
 
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
-
 
 -- |A convenience type to represent PrivateTmp=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
@@ -580,10 +525,6 @@ instance C.Config PrivateTmp where
 
     printer (PrivateTmp True ) = "true"
     printer (PrivateTmp False) = "false"
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)
 
 
 instance C.Config SystemdService where
@@ -957,7 +898,3 @@ instance C.Config Exec where
             <> (if continueOnError then "-" else "")
             <> (if noEnvironmentVariableSubstitution then ":" else "")
             <> command
-
-    gen (C.PathValue (C.Path []) value) =
-        mapLeft (C.ParseError $ C.Path []) $ C.parse C.parser value
-    gen (C.PathValue (C.Path path) _) = Left $ C.UnknownPath (C.Path path)

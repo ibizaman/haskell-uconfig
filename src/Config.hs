@@ -45,7 +45,7 @@ import           Prelude                 hiding ( Word
 
 import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
-
+import           Utils                          ( mapLeft )
 import qualified Parser                        as P
 
 
@@ -53,6 +53,11 @@ class Config a where
     parser :: P.Parser a
     printer :: a -> T.Text
     gen :: PathValue -> Either GenerateError a
+    gen (PathValue (Path []) value) =
+        mapLeft (ParseError $ Path []) $ P.parse parser value
+    gen (PathValue (Path p) _) = Left $ UnknownPath (Path p)
+
+
 
 generate :: (Monoid a, Config a) => [PathValue] -> Either GenerateError a
 generate = foldMaybe mempty
