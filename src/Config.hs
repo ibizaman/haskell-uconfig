@@ -17,7 +17,9 @@ module Config
     , Quoted(..)
     , Spaced(..)
     , Path(..)
-    , PathValue(..)
+    -- , PathValue(..)
+    , FieldsTree(..)
+    , GenerateResult(..)
     , GenerateError(..)
     , P.parse
     , flat
@@ -32,9 +34,15 @@ module Config
     , spaced
     , quoted
     , plain
-    , pathValue
+    , (</>)
     , path
+    , fieldsTree
+    , pathValue
     , generate
+    , generateError
+    , generateSuccess
+    , generateEither
+    , mapLeft
     )
 where
 
@@ -44,30 +52,101 @@ import           Prelude                 hiding ( Word
                                                 )
 
 import           Data.Functor                   ( ($>) )
+import           Data.Map.Strict                ( Map )
+import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
 import           Utils                          ( mapLeft )
+
 import qualified Parser                        as P
 
 
-class Config a where
+newtype GenerateResult a = GenerateResult {
+      unGenerateResult :: ([GenerateError], Maybe a)
+                        }
+
+instance (Semigroup a) => Semigroup (GenerateResult a) where
+    GenerateResult (errsLeft, left) <> GenerateResult (errsRight, right) =
+        GenerateResult (errsLeft <> errsRight, left <> right)
+
+instance (Semigroup a) => Monoid (GenerateResult a) where
+    mempty = GenerateResult ([], Nothing)
+
+instance Functor GenerateResult where
+    fmap f (GenerateResult (errs, v)) = GenerateResult (errs, fmap f v)
+
+instance Applicative GenerateResult where
+    pure x = GenerateResult ([], Just x)
+    (GenerateResult (errs, f)) <*> (GenerateResult (errs', vals')) =
+        GenerateResult (errs <> errs', f <*> vals')
+
+instance Monad GenerateResult where
+    return x = GenerateResult ([], Just x)
+    (GenerateResult (errs, Just vals)) >>= f =
+        let GenerateResult (errs', vals') = f vals
+        in  GenerateResult (errs <> errs', vals')
+    (GenerateResult (errs, Nothing)) >>= _ = GenerateResult (errs, Nothing)
+
+
+generateError :: GenerateError -> GenerateResult a
+generateError e = GenerateResult ([e], Nothing)
+
+generateSuccess :: a -> GenerateResult a
+generateSuccess v = GenerateResult ([], Just v)
+
+generateEither :: Either GenerateError a -> GenerateResult a
+generateEither (Left  err) = generateError err
+generateEither (Right v  ) = generateSuccess v
+
+class (Semigroup a) => Config a where
     parser :: P.Parser a
     printer :: a -> T.Text
-    gen :: PathValue -> Either GenerateError a
-    gen (PathValue (Path []) value) =
-        mapLeft (ParseError $ Path []) $ P.parse parser value
-    gen (PathValue (Path p) _) = Left $ UnknownPath (Path p)
+    gen :: Path -> FieldsTree -> GenerateResult a
+    gen p (FieldsTree (Just values) m) | Map.null m =
+        mconcat $ map (generateEither . mapLeft (ParseError p) . P.parse parser) values
+    gen p _ = generateError $ UnknownPath p
 
 
+data FieldsTree = FieldsTree (Maybe [T.Text]) (Map T.Text [FieldsTree])
+  deriving (Eq, Show)
 
-generate :: (Monoid a, Config a) => [PathValue] -> Either GenerateError a
-generate = foldMaybe mempty
+instance Semigroup FieldsTree where
+    FieldsTree aValues aFields <> FieldsTree bValues bFields =
+        FieldsTree (aValues <> bValues) (Map.unionWith (<>) aFields bFields)
+
+instance Monoid FieldsTree where
+    mempty = FieldsTree Nothing Map.empty
+
+
+fieldsTree :: [(Path, T.Text)] -> FieldsTree
+fieldsTree = foldr upsert mempty
   where
-    foldMaybe
-        :: (Semigroup a, Config a) => a -> [PathValue] -> Either GenerateError a
-    foldMaybe acc []         = return acc
-    foldMaybe acc (pv : pvs) = do
-        m <- gen pv
-        foldMaybe (acc <> m) pvs
+    upsert :: (Path, T.Text) -> FieldsTree -> FieldsTree
+    upsert (Path [], newValue) (FieldsTree values fields) =
+        FieldsTree (Just [newValue] <> values) fields
+    upsert (Path (p : pathRest), newValue) (FieldsTree values fields) =
+        case Map.lookup p fields of
+            Just children -> FieldsTree values $ Map.insert
+                p
+                (map (upsert (Path pathRest, newValue)) children)
+                fields
+            Nothing -> FieldsTree
+                values
+                (Map.insert p [singleton (Path pathRest, newValue)] fields)
+
+    singleton :: (Path, T.Text) -> FieldsTree
+    singleton (Path [], value) = FieldsTree (Just [value]) Map.empty
+    singleton (Path (p : pathRest), value) =
+        FieldsTree Nothing (Map.singleton p [singleton (Path pathRest, value)])
+
+pathValue :: P.Parser (Path, T.Text)
+pathValue = do
+    p <- path
+    _ <- P.chunk "="
+    v <- P.words
+    return (p, v)
+
+generate :: (Config a) => FieldsTree -> ([GenerateError], Maybe a)
+generate = unGenerateResult . gen (Path [])
 
 data GenerateError = UnknownPath Path | ParseError Path T.Text
     deriving(Eq)
@@ -85,22 +164,11 @@ newtype Path = Path [T.Text]
 instance Show Path where
     show (Path p) = T.unpack $ T.intercalate "." p
 
+(</>) :: Path -> T.Text -> Path
+(Path p) </> p' = Path (p ++ [p'])
+
 path :: P.Parser Path
 path = fmap (Path . T.splitOn ".") P.words
-
--- |PathValue is a 'Path' associated with a 'Value'. It is used to set
--- a value somewhere in a 'Config'.
-data PathValue = PathValue Path T.Text
-  deriving(Eq)
-
-instance Show PathValue where
-    show (PathValue p v) = show p <> "=" <> T.unpack v
-
-pathValue :: P.Parser PathValue
-pathValue = do
-    p <- path
-    _ <- P.chunk "="
-    PathValue p <$> P.words
 
 
 -- |Flat is a config consisting of only assignments.

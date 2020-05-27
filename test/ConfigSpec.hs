@@ -9,6 +9,8 @@ import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
 import           Config
+import           Data.Map.Strict                ( Map )
+import qualified Data.Map.Strict               as Map
 import qualified Parser                        as P
 import qualified Utils                         as U
 
@@ -87,7 +89,7 @@ spec = do
                                )
         H.it "parses multiple lines with spaces"
             $ parse (flat P.word)
-                      " key  =   value \nkey2=value2\n key3  =  value3 "
+                    " key  =   value \nkey2=value2\n key3  =  value3 "
             `HPP.shouldBe` Right
                                (Flat
                                    [ Assignment
@@ -119,9 +121,8 @@ spec = do
                                    ]
                                )
     H.describe "anyHeader" $ do
-        H.it "parses header"
-            $              parse anyHeader "[section]"
-            `HPP.shouldBe` Right "section"
+        H.it "parses header" $ parse anyHeader "[section]" `HPP.shouldBe` Right
+            "section"
         H.it "parses header with trailing newline"
             $              parse anyHeader "[section]\n"
             `HPP.shouldBe` Right "section"
@@ -162,7 +163,7 @@ spec = do
                                )
         H.it "parses multiple sections"
             $              parse (sectioned P.word)
-                                   "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
+                                 "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"
@@ -201,21 +202,114 @@ spec = do
         H.it "found x<space>y"
             $ parse (fetchInSection (P.chunk "x y")) "\na b\n\nx y\n\n[s2]\n"
             `HPP.shouldBe` Right (Just "x y")
+    H.describe "fieldsTree" $ do
+        H.it "one" $ fieldsTree [(Path ["1"], "v1")] `H.shouldBe` FieldsTree
+            Nothing
+            (Map.fromList [("1", [FieldsTree (Just ["v1"]) Map.empty])])
+        H.it "two"
+            $            fieldsTree [(Path ["1"], "v1"), (Path ["2"], "v2")]
+            `H.shouldBe` FieldsTree
+                             Nothing
+                             (Map.fromList
+                                 [ ("1", [FieldsTree (Just ["v1"]) Map.empty])
+                                 , ("2", [FieldsTree (Just ["v2"]) Map.empty])
+                                 ]
+                             )
+        H.it "merge"
+            $            fieldsTree [(Path ["1"], "v1"), (Path ["1"], "v2")]
+            `H.shouldBe` FieldsTree
+                             Nothing
+                             (Map.fromList
+                                 [ ( "1"
+                                   , [FieldsTree (Just ["v1", "v2"]) Map.empty]
+                                   )
+                                 ]
+                             )
+        H.it "merge 2"
+            $            fieldsTree
+                             [ (Path ["Unit", "After"], "target1")
+                             , (Path ["Unit", "After"], "target2")
+                             ]
+            `H.shouldBe` FieldsTree
+                             Nothing
+                             (Map.fromList
+                                 [ ( "Unit"
+                                   , [ FieldsTree Nothing
+                                           $ Map.fromList
+                                                 [ ( "After"
+                                                   , [ FieldsTree
+                                                           (Just
+                                                               [ "target1"
+                                                               , "target2"
+                                                               ]
+                                                           )
+                                                           Map.empty
+                                                     ]
+                                                   )
+                                                 ]
+                                     ]
+                                   )
+                                 ]
+                             )
+        H.it "multiple"
+            $            fieldsTree
+                             [ (Path ["1", "2"]     , "v1")
+                             , (Path ["1", "3"]     , "v2")
+                             , (Path ["1", "2", "4"], "v3")
+                             , (Path ["1", "2"]     , "v4")
+                             , (Path ["2", "2"]     , "v5")
+                             ]
+            `H.shouldBe` FieldsTree
+                             Nothing
+                             (Map.fromList
+                                 [ ( "1"
+                                   , [ FieldsTree
+                                           Nothing
+                                           (Map.fromList
+                                               [ ( "2"
+                                                 , [ FieldsTree
+                                                         (Just ["v1", "v4"])
+                                                         (Map.fromList
+                                                             [ ( "4"
+                                                               , [ FieldsTree
+                                                                       (Just
+                                                                           [ "v3"
+                                                                           ]
+                                                                       )
+                                                                       Map.empty
+                                                                 ]
+                                                               )
+                                                             ]
+                                                         )
+                                                   ]
+                                                 )
+                                               , ( "3"
+                                                 , [ FieldsTree
+                                                         (Just ["v2"])
+                                                         Map.empty
+                                                   ]
+                                                 )
+                                               ]
+                                           )
+                                     ]
+                                   )
+                                 , ( "2"
+                                   , [ FieldsTree
+                                           Nothing
+                                           (Map.fromList
+                                               [ ( "2"
+                                                 , [ FieldsTree
+                                                         (Just ["v5"])
+                                                         Map.empty
+                                                   ]
+                                                 )
+                                               ]
+                                           )
+                                     ]
+                                   )
+                                 ]
+                             )
     H.describe "path" $ do
         H.it "one path" $ parse path "one" `HPP.shouldBe` Right (Path ["one"])
         H.it "three paths" $ parse path "one.two.three" `HPP.shouldBe` Right
             (Path ["one", "two", "three"])
-    H.describe "pathValue" $ do
-        H.it "is printed correctly"
-            $              show (PathValue (Path ["one", "two"]) "three")
-            `HPP.shouldBe` "one.two=three"
-        H.it "fails on empty" $ parse pathValue "" `HPP.shouldSatisfy` U.isLeft
-        H.it "fails without equal"
-            $                   parse pathValue "onetwo"
-            `HPP.shouldSatisfy` U.isLeft
-        H.it "parses root-level assignment"
-            $              parse pathValue "one=two"
-            `HPP.shouldBe` Right (PathValue (Path ["one"]) "two")
-        H.it "parses nested assignment"
-            $              parse pathValue "one.two=three"
-            `HPP.shouldBe` Right (PathValue (Path ["one", "two"]) "three")

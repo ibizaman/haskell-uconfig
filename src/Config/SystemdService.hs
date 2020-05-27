@@ -36,19 +36,19 @@ module Config.SystemdService
     , TasksMax(..)
     , PrivateTmp(..)
     , Restart(..)
+    , genTargets
     )
 where
 
 
 import           Control.Applicative            ( (<|>) )
 import           Data.Functor                   ( ($>) )
+import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
 import           Data.String                    ( IsString )
 import qualified Parser                        as P
+import           Config                         ( (</>) )
 import qualified Config                        as C
-import           Utils                          ( mapLeft
-                                                , mapRight
-                                                )
 
 
 -- |Value that can be empty. It's Maybe with a different Semigroup
@@ -135,6 +135,12 @@ instance Monoid Unit where
 newtype Description = Description T.Text
     deriving(Eq, Show)
 
+instance Semigroup Description where
+    Description a <> Description b = Description (a <> b)
+
+instance Monoid Description where
+    mempty = Description ""
+
 instance C.Config Description where
     parser = Description <$> P.words
 
@@ -159,16 +165,23 @@ instance C.Config Documentation where
 newtype Target = Target T.Text
     deriving(Eq, Show)
 
-instance Semigroup Target where
-    Target a <> Target b = Target (a <> b)
+parseTarget = P.some (Target . C.plain <$> C.spaced (C.quoted P.word))
 
-instance Monoid Target where
-    mempty = Target mempty
+genTargets p (C.FieldsTree (Just values) m) | Map.null m = mconcat $ map
+    (C.generateEither . C.mapLeft (C.ParseError p) . C.parse parseTarget)
+    values
+genTargets p _ = C.generateError $ C.UnknownPath p
 
-instance C.Config Target where
-    parser = Target . C.plain <$> C.spaced (C.quoted P.word)
+--instance Semigroup Target where
+--    Target a <> Target b = Target (a <> b)
 
-    printer (Target t) = t
+--instance Monoid Target where
+--    mempty = Target mempty
+
+--instance C.Config Target where
+--    parser = Target . C.plain <$> C.spaced (C.quoted P.word)
+--
+--    printer (Target t) = t
 
 
 -- |A Systemd [Install] record.
@@ -376,6 +389,9 @@ instance Monoid Exec where
 newtype User = User T.Text
   deriving(Eq, Show)
 
+instance Semigroup User where
+    _ <> b = b
+
 instance C.Config User where
     parser = User <$> P.word
 
@@ -384,6 +400,9 @@ instance C.Config User where
 
 newtype Group = Group T.Text
   deriving(Eq, Show)
+
+instance Semigroup Group where
+    _ <> b = b
 
 instance C.Config Group where
     parser = Group <$> P.word
@@ -394,6 +413,9 @@ instance C.Config Group where
 newtype WorkingDirectory = WorkingDirectory T.Text
   deriving(Eq, Show)
 
+instance Semigroup WorkingDirectory where
+    _ <> b = b
+
 instance C.Config WorkingDirectory where
     parser = WorkingDirectory <$> P.word
 
@@ -402,6 +424,9 @@ instance C.Config WorkingDirectory where
 
 data Output = OJournal
   deriving(Eq, Show)
+
+instance Semigroup Output where
+    _ <> b = b
 
 instance C.Config Output where
     parser = P.choice [P.chunk "journal" $> OJournal]
@@ -419,7 +444,6 @@ instance C.Config TasksMax where
     printer (TasksMax i)     = T.pack $ show i
     printer TasksMaxInfinity = "infinity"
 
-
 instance Semigroup TasksMax where
     _ <> b = b
 
@@ -435,6 +459,9 @@ data Restart = RNo
              | ROnAbort
              | ROnWatchdog
   deriving(Eq, Show)
+
+instance Semigroup Restart where
+    _ <> b = b
 
 instance C.Config Restart where
     parser = P.choice
@@ -461,6 +488,9 @@ instance C.Config Restart where
 newtype PIDFile = PIDFile T.Text
   deriving(Eq, Show)
 
+instance Semigroup PIDFile where
+    _ <> b = b
+
 instance C.Config PIDFile where
     parser = PIDFile <$> P.words
 
@@ -471,6 +501,9 @@ instance C.Config PIDFile where
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=
 newtype RemainAfterExit = RemainAfterExit Bool
   deriving(Eq, Show)
+
+instance Semigroup RemainAfterExit where
+    _ <> b = b
 
 instance C.Config RemainAfterExit where
     parser = RemainAfterExit
@@ -484,6 +517,9 @@ instance C.Config RemainAfterExit where
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
 newtype BusName = BusName T.Text
   deriving(Eq, Show)
+
+instance Semigroup BusName where
+    _ <> b = b
 
 instance C.Config BusName where
     parser = BusName <$> P.words
@@ -499,6 +535,9 @@ data NotifyAccess
   | NAExec
   | NAAll
   deriving(Eq, Show)
+
+instance Semigroup NotifyAccess where
+    _ <> b = b
 
 instance C.Config NotifyAccess where
     parser = P.choice
@@ -519,6 +558,9 @@ instance C.Config NotifyAccess where
 newtype PrivateTmp = PrivateTmp Bool
   deriving(Eq, Show)
 
+instance Semigroup PrivateTmp where
+    _ <> b = b
+
 instance C.Config PrivateTmp where
     parser = PrivateTmp
         <$> P.choice [P.chunk "true" $> True, P.chunk "false" $> False]
@@ -536,12 +578,23 @@ instance C.Config SystemdService where
     printer SystemdService {..} =
         C.printer unit <..> C.printer install <..> C.printer service
 
-    gen (C.PathValue (C.Path path) value) = case path of
-        ("Unit" : rest) -> (\u -> mempty { unit = u })
-            <$> C.gen (C.PathValue (C.Path rest) value)
-
-        _ -> Left $ C.UnknownPath (C.Path path)
-
+    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
+        case k of
+            "Unit" -> mconcat $ map
+                (fmap (\v' -> mempty { unit = v' }) . C.gen (path </> "Unit"))
+                v
+            "Install" -> mconcat $ map
+                ( fmap (\v' -> mempty { install = v' })
+                . C.gen (path </> "Install")
+                )
+                v
+            "Service" -> mconcat $ map
+                ( fmap (\v' -> mempty { service = v' })
+                . C.gen (path </> "Service")
+                )
+                v
+            other -> C.generateError $ C.UnknownPath (path </> other)
+    gen path _ = C.generateError $ C.UnknownPath path
 
 (<=>) :: C.Config c => T.Text -> c -> T.Text
 a <=> b = case C.printer b of
@@ -572,16 +625,13 @@ instance C.Config Unit where
             <$> C.assignment "Description" C.parser
         , (\d -> mempty { documentation = d })
             <$> C.assignment "Documentation" (P.some C.parser)
-        , (\bs -> mempty { before = bs })
-            <$> C.assignment "Before" (P.some C.parser)
-        , (\as -> mempty { after = as })
-            <$> C.assignment "After" (P.some C.parser)
-        , (\ws -> mempty { wants = ws })
-            <$> C.assignment "Wants" (P.some C.parser)
+        , (\bs -> mempty { before = bs }) <$> C.assignment "Before" parseTarget
+        , (\as -> mempty { after = as }) <$> C.assignment "After" parseTarget
+        , (\ws -> mempty { wants = ws }) <$> C.assignment "Wants" parseTarget
         , (\rs -> mempty { requires = rs })
-            <$> C.assignment "Requires" (P.some C.parser)
+            <$> C.assignment "Requires" parseTarget
         , (\cs -> mempty { conflicts = cs })
-            <$> C.assignment "Conflicts" (P.some C.parser)
+            <$> C.assignment "Conflicts" parseTarget
         , P.emptyLine $> mempty
         ]
 
@@ -590,71 +640,95 @@ instance C.Config Unit where
             $   (("Description=" <>) . C.printer) description
             <.> (T.intercalate "\n" . fmap (("Documentation=" <>) . C.printer))
                     documentation
-            <.> (T.intercalate "\n" . fmap (("Before=" <>) . C.printer)) before
-            <.> (T.intercalate "\n" . fmap (("After=" <>) . C.printer)) after
-            <.> (T.intercalate "\n" . fmap (("Wants=" <>) . C.printer)) wants
-            <.> (T.intercalate "\n" . fmap (("Requires=" <>) . C.printer))
+            <.> (T.intercalate "\n" . fmap (("Before=" <>) . (\(Target t) -> t))
+                )
+                    before
+            <.> (T.intercalate "\n" . fmap (("After=" <>) . (\(Target t) -> t)))
+                    after
+            <.> (T.intercalate "\n" . fmap (("Wants=" <>) . (\(Target t) -> t)))
+                    wants
+            <.> ( T.intercalate "\n"
+                . fmap (("Requires=" <>) . (\(Target t) -> t))
+                )
                     requires
-            <.> (T.intercalate "\n" . fmap (("Conflicts=" <>) . C.printer))
+            <.> ( T.intercalate "\n"
+                . fmap (("Conflicts=" <>) . (\(Target t) -> t))
+                )
                     conflicts
 
-    gen (C.PathValue (C.Path path) value) = case path of
-        ["Description"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { description = v })
-                $ C.parse C.parser value
-        ["Documentation"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { documentation = v })
-                $ C.parse (P.some C.parser) value
-        ["Before"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { before = v })
-                $ C.parse (P.some C.parser) value
-        ["After"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { after = v })
-                $ C.parse (P.some C.parser) value
-        ["Wants"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { wants = v })
-                $ C.parse (P.some C.parser) value
-        ["Requires"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { requires = v })
-                $ C.parse (P.some C.parser) value
-        ["Conflicts"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { conflicts = v })
-                $ C.parse (P.some C.parser) value
-        _ -> Left $ C.UnknownPath (C.Path path)
+    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
+        case k of
+            "Description" -> mconcat $ map
+                ( fmap (\v' -> mempty { description = v' })
+                . C.gen (path </> "Description")
+                )
+                v
+            "Documentation" -> mconcat $ map
+                ( fmap (\v' -> mempty { documentation = pure v' })
+                . C.gen (path </> "Documentation")
+                )
+                v
+            "Before" -> mconcat $ map
+                ( fmap (\v' -> mempty { before = v' })
+                . genTargets (path </> "Before")
+                )
+                v
+            "After" -> mconcat $ map
+                ( fmap (\v' -> mempty { after = v' })
+                . genTargets (path </> "After")
+                )
+                v
+            "Wants" -> mconcat $ map
+                ( fmap (\v' -> mempty { wants = v' })
+                . genTargets (path </> "Wants")
+                )
+                v
+            "Requires" -> mconcat $ map
+                ( fmap (\v' -> mempty { requires = v' })
+                . genTargets (path </> "Requires")
+                )
+                v
+            "Conflicts" -> mconcat $ map
+                ( fmap (\v' -> mempty { conflicts = v' })
+                . genTargets (path </> "Conflicts")
+                )
+                v
+            other -> C.generateError $ C.UnknownPath (path </> other)
+    gen path _ = C.generateError $ C.UnknownPath path
 
 
 instance C.Config Install where
     parser = P.build
         [ (\wbs -> mempty { wantedBy = wbs })
-            <$> C.assignment "WantedBy" (P.some C.parser)
+            <$> C.assignment "WantedBy" parseTarget
         , (\rbs -> mempty { requiredBy = rbs })
-            <$> C.assignment "RequiredBy" (P.some C.parser)
+            <$> C.assignment "RequiredBy" parseTarget
         , P.emptyLine $> mempty
         ]
     printer Install {..} =
         header "[Install]"
-            $   (T.intercalate "\n" . fmap (("WantedBy=" <>) . C.printer))
-                    wantedBy
-            <.> (T.intercalate "\n" . fmap (("RequiredBy=" <>) . C.printer))
+            $ (T.intercalate "\n" . fmap (("WantedBy=" <>) . (\(Target t) -> t))
+              )
+                  wantedBy
+            <.> ( T.intercalate "\n"
+                . fmap (("RequiredBy=" <>) . (\(Target t) -> t))
+                )
                     requiredBy
 
-    gen (C.PathValue (C.Path path) value) = case path of
-        ["WantedBy"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { wantedBy = v })
-                $ C.parse (P.some C.parser) value
-        ["RequiredBy"] ->
-            mapLeft (C.ParseError $ C.Path path)
-                $ mapRight (\v -> mempty { requiredBy = v })
-                $ C.parse (P.some C.parser) value
-        _ -> Left $ C.UnknownPath (C.Path path)
+    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
+        case k of
+            "WantedBy" -> mconcat $ map
+                ( fmap (\v' -> mempty { wantedBy = v' })
+                . genTargets (path </> "WantedBy")
+                )
+                v
+            "RequiredBy" -> mconcat $ map
+                ( fmap (\v' -> mempty { requiredBy = v' })
+                . genTargets (path </> "RequiredBy")
+                )
+                v
+            other -> C.generateError $ C.UnknownPath (path </> other)
+    gen path _ = C.generateError $ C.UnknownPath path
 
 
 instance C.Config Service where
@@ -749,89 +823,128 @@ instance C.Config Service where
             <.> (T.intercalate "\n" . fmap ("ExecStop=" <=>)) execStop
             <.> (T.intercalate "\n" . fmap ("ExecStopPost=" <=>)) execStopPost
 
-    gen (C.PathValue (C.Path path) value) =
-        toService <$> parseInternal >>= \case
-            Left  e -> fail $ T.unpack e
-            Right s -> return s
+    -- gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
+    --     case k of
+    --         "WantedBy" -> mconcat $ map
+    --             ( fmap (\v' -> mempty { wantedBy = v' })
+    --             . genTargets (path </> "WantedBy")
+    --             )
+    --             v
+    --         "RequiredBy" -> mconcat $ map
+    --             ( fmap (\v' -> mempty { requiredBy = v' })
+    --             . genTargets (path </> "RequiredBy")
+    --             )
+    --             v
+    --         other -> C.generateError $ C.UnknownPath (path </> other)
+    -- gen path _ = C.generateError $ C.UnknownPath path
+
+    -- mconcat $ map
+    --     (C.generateEither . C.mapLeft (C.ParseError p) . C.parse parseTarget)
+    --     values
+
+    gen path (C.FieldsTree Nothing m) =
+        parseInternal
+            >>= C.generateEither
+            .   C.mapLeft (C.ParseError path)
+            .   toService
       where
-        parseInternal = case path of
-            ["ExecCondition"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecCondition = v })
-                    $ C.parse (P.some C.parser) value
-            ["ExecStartPre"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecStartPre = v })
-                    $ C.parse (P.some C.parser) value
-            ["ExecStartPost"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecStartPost = v })
-                    $ C.parse (P.some C.parser) value
-            ["Type"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iType = pure v })
-                    $ C.parse P.word value
-            ["PIDFile"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iPIDFile = v })
-                    $ C.parse C.parser value
-            ["RemainAfterExit"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iRemainAfterExit = v })
-                    $ C.parse C.parser value
-            ["BusName"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iBusName = v })
-                    $ C.parse C.parser value
-            ["NotifyAccess"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iNotifyAccess = v })
-                    $ C.parse C.parser value
-            ["ExecReload"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecReload = v })
-                    $ C.parse C.parser value
-            ["ExecStop"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecStop = v })
-                    $ C.parse (P.some C.parser) value
-            ["ExecStopPost"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iExecStopPost = v })
-                    $ C.parse (P.some C.parser) value
-            ["User"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iUser = v })
-                    $ C.parse C.parser value
-            ["Group"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iGroup = v })
-                    $ C.parse C.parser value
-            ["WorkingDirectory"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iWorkingDirectory = v })
-                    $ C.parse C.parser value
-            ["StandardOutput"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iStandardOutput = v })
-                    $ C.parse C.parser value
-            ["StandardError"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iStandardError = v })
-                    $ C.parse C.parser value
-            ["TasksMax"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iTasksMax = v })
-                    $ C.parse C.parser value
-            ["Restart"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iRestart = v })
-                    $ C.parse C.parser value
-            ["PrivateTmp"] ->
-                mapLeft (C.ParseError $ C.Path path)
-                    $ mapRight (\v -> mempty { iPrivateTmp = v })
-                    $ C.parse C.parser value
-            _ -> Left $ C.UnknownPath (C.Path path)
+        genExecs p (C.FieldsTree (Just values) m') | Map.null m' = mconcat $ map
+            (C.generateEither . C.mapLeft (C.ParseError p) . C.parse
+                (P.some C.parser)
+            )
+            values
+        genExecs p _ = C.generateError $ C.UnknownPath p
+
+        genUser p (C.FieldsTree (Just values) m') | Map.null m' = mconcat $ map
+            (C.generateEither . C.mapLeft (C.ParseError p) . C.parse C.parser)
+            values
+        genUser p _ = C.generateError $ C.UnknownPath p
+
+        parseInternal = flip Map.foldMapWithKey m $ \k v -> case k of
+            "ExecCondition" -> mconcat $ map
+                ( fmap (\v' -> mempty { iExecCondition = v' })
+                . genExecs (path </> "ExecCondition")
+                )
+                v
+            --"ExecStartPre" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iExecStartPre = v })
+            --        $ C.parse (P.some C.parser) value
+            --"ExecStartPost" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iExecStartPost = v })
+            --        $ C.parse (P.some C.parser) value
+            --"Type" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iType = pure v })
+            --        $ C.parse P.word value
+            "ExecStart" -> mconcat $ map
+                ( fmap (\v' -> mempty { iExecStart = v' })
+                . genExecs (path </> "ExecStart")
+                )
+                v
+            --"PIDFile" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iPIDFile = v })
+            --        $ C.parse C.parser value
+            --"RemainAfterExit" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iRemainAfterExit = v })
+            --        $ C.parse C.parser value
+            --"BusName" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iBusName = v })
+            --        $ C.parse C.parser value
+            --"NotifyAccess" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iNotifyAccess = v })
+            --        $ C.parse C.parser value
+            --"ExecReload" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iExecReload = v })
+            --        $ C.parse C.parser value
+            --"ExecStop" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iExecStop = v })
+            --        $ C.parse (P.some C.parser) value
+            --"ExecStopPost" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iExecStopPost = v })
+            --        $ C.parse (P.some C.parser) value
+            "User" -> mconcat $ map
+                (fmap (\v' -> mempty { iUser = v' }) . genUser (path </> "User")
+                )
+                v
+            --"Group" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iGroup = v })
+            --        $ C.parse C.parser value
+            --"WorkingDirectory" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iWorkingDirectory = v })
+            --        $ C.parse C.parser value
+            --"StandardOutput" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iStandardOutput = v })
+            --        $ C.parse C.parser value
+            --"StandardError" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iStandardError = v })
+            --        $ C.parse C.parser value
+            --"TasksMax" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iTasksMax = v })
+            --        $ C.parse C.parser value
+            --"Restart" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iRestart = v })
+            --        $ C.parse C.parser value
+            --"PrivateTmp" ->
+            --    mapLeft (C.ParseError $ C.Path path)
+            --        $ mapRight (\v -> mempty { iPrivateTmp = v })
+            --        $ C.parse C.parser value
+            other -> C.generateError $ C.UnknownPath (path </> other)
+    gen path _ = C.generateError $ C.UnknownPath path
 
 typeFromInternalService :: InternalService -> Either T.Text Type
 typeFromInternalService InternalService {..} = case iType of

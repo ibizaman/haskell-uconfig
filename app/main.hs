@@ -6,6 +6,7 @@ where
 
 import qualified Config                        as C
 import           Config.SystemdService          ( SystemdService(..) )
+import qualified Data.Foldable                 as F
 import qualified Data.Text                     as T
 import qualified Args
 import qualified System.IO                     as SIO
@@ -14,8 +15,8 @@ import qualified Text.Nicify                   as Nicify
 
 data Arguments = ArgParse Config T.Text
                | ArgPrint Config T.Text
-               | ArgGenerate Config [C.PathValue]
-               | ArgWrite Config T.Text [C.PathValue]
+               | ArgGenerate Config C.FieldsTree
+               | ArgWrite Config T.Text C.FieldsTree
 
 data Config = CSystemdService
 
@@ -26,14 +27,21 @@ main = arguments >>= \case
         putStrLn $ Nicify.nicify $ show (parsed :: SystemdService)
     ArgPrint CSystemdService file -> parse file $ \parsed ->
         putStrLn $ T.unpack $ C.printer (parsed :: SystemdService)
-    ArgGenerate CSystemdService pathValues -> case C.generate pathValues of
-        Left err -> print err
-        Right content ->
-            putStrLn $ T.unpack $ C.printer (content :: SystemdService)
-    ArgWrite CSystemdService file pathValues -> case C.generate pathValues of
-        Left err -> print err
-        Right content ->
-            write file $ T.unpack $ C.printer (content :: SystemdService)
+    ArgGenerate CSystemdService fieldsTree -> do
+        let (errs, result) = C.generate fieldsTree
+        printErrors errs
+        case result of
+            Nothing -> putStrLn "No valid config generated."
+            Just content ->
+                putStrLn $ T.unpack $ C.printer (content :: SystemdService)
+    ArgWrite CSystemdService file fieldsTree -> do
+        let (errs, result) = C.generate fieldsTree
+        case errs of
+            [] -> case result of
+                Nothing      -> putStrLn "No valid config generated."
+                Just content -> write file $ T.unpack $ C.printer
+                    (content :: SystemdService)
+            errs' -> printErrors errs'
   where
     parse file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
         (C.parse C.parser <$> (T.pack <$> SIO.hGetContents handle)) >>= \case
@@ -41,6 +49,12 @@ main = arguments >>= \case
             Right parsed -> f parsed
 
     write file = SIO.writeFile (T.unpack file)
+
+    printErrors :: [C.GenerateError] -> IO ()
+    printErrors []   = return ()
+    printErrors errs = do
+        putStrLn "Got some errors while generating config:"
+        F.sequenceA_ $ map print errs
 
 
 arguments :: IO Arguments
@@ -60,8 +74,11 @@ arguments = Args.execParser $ Args.info
               , "Generate a file"
               , ArgGenerate
               <$> configtypeparser
-              <*> (Args.some $ Args.argument (Args.parsecArg C.pathValue)
-                                             (Args.metavar "PATHVALUE...")
+              <*> (   C.fieldsTree
+                  <$> (Args.some $ Args.argument
+                          (Args.parsecArg C.pathValue)
+                          (Args.metavar "PATHVALUE...")
+                      )
                   )
               )
             , ( "write"
@@ -69,9 +86,11 @@ arguments = Args.execParser $ Args.info
               , ArgWrite
               <$> configtypeparser
               <*> Args.strArgument (Args.metavar "FILE")
-              <*> (Args.some $ Args.argument
-                      (Args.parsecArg C.pathValue)
-                      (Args.metavar "PATHVALUE...")
+              <*> (   C.fieldsTree
+                  <$> (Args.some $ Args.argument
+                          (Args.parsecArg C.pathValue)
+                          (Args.metavar "PATHVALUE...")
+                      )
                   )
               )
             ]
