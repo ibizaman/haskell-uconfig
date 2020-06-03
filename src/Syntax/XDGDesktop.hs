@@ -13,9 +13,10 @@ XDG Desktop files.
 https://specifications.freedesktop.org/desktop-entry-spec/latest/
 -}
 module Syntax.XDGDesktop
-    (
+    ( module Syntax
+
     -- Parse
-      parser
+    , parser
     , parseSection
     , parseSections
     , parseValue
@@ -53,8 +54,9 @@ parser =
         <*> (Maybe.fromMaybe mempty <$> P.optional parseComment)
 
 
-parseSections :: P.Parser (Map.Map T.Text Section)
-parseSections = Map.fromList <$> P.some ((,) <$> parseHeader <*> parseSection)
+parseSections :: P.Parser Sections
+parseSections =
+    Sections . Map.fromList <$> P.some ((,) <$> parseHeader <*> parseSection)
 
 
 parseHeader :: P.Parser T.Text
@@ -89,10 +91,12 @@ generate xdg =
     T.intercalate "\n"
         $  generateComment (firstComments xdg)
         <> generateSection (firstSection xdg)
-        <> Map.foldMapWithKey
-               (\h s -> [generateHeader h] <> generateSection s)
-               (sections xdg)
-        <> generateComment (trailingComments xdg)
+        <> let (Sections s') = sections xdg
+           in
+               Map.foldMapWithKey
+                       (\h s -> [generateHeader h] <> generateSection s)
+                       s'
+                   <> generateComment (trailingComments xdg)
   where
     generateComment :: Comment -> [T.Text]
     generateComment (Comment cs) = map ("#" <>) cs

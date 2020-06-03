@@ -11,6 +11,7 @@ Helpers to create Parsers and Generators.
 -}
 module Syntax
     ( XDGDesktop(..)
+    , Sections(..)
     , Section(..)
     , Value(..)
     , Comment(..)
@@ -30,7 +31,7 @@ import qualified Data.Text                     as T
 data XDGDesktop = XDGDesktop
     { firstSection :: Section
     , firstComments :: Comment
-    , sections :: Map.Map T.Text Section
+    , sections :: Sections
     , trailingComments :: Comment
     }
     deriving (Show, Eq)
@@ -51,8 +52,20 @@ instance Monoid XDGDesktop where
                         }
 
 (/*) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
-x /* (Just k , s) = x { sections = Map.insert k s (sections x) }
+x /* (Just k, s) = x
+    { sections = let (Sections s') = sections x in Sections $ Map.insert k s s'
+    }
 x /* (Nothing, s) = x { firstSection = s }
+
+
+newtype Sections = Sections (Map.Map T.Text Section)
+    deriving (Show, Eq)
+
+instance Semigroup Sections where
+    Sections a <> Sections b = Sections $ a <> b
+
+instance Monoid Sections where
+    mempty = Sections Map.empty
 
 
 newtype Section = Section (Map.Map T.Text Value)
