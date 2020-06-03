@@ -13,17 +13,9 @@ XDG Desktop files.
 https://specifications.freedesktop.org/desktop-entry-spec/latest/
 -}
 module Syntax.XDGDesktop
-    ( XDGDesktop(..)
-    , Section(..)
-    , Value(..)
-    , Comment(..)
-    , (/*)
-    , (/**)
-    , (<#)
-    , (#>)
-
+    (
     -- Parse
-    , parser
+      parser
     , parseSection
     , parseSections
     , parseValue
@@ -40,84 +32,12 @@ import           Control.Applicative            ( (<$>)
                                                 , (<|>)
                                                 )
 import qualified Data.Maybe                    as Maybe
-import qualified Data.String
 import qualified Data.Text                     as T
 import qualified Data.Map.Strict               as Map
 
+import           Syntax
 import qualified Config                        as C
 import qualified Parser                        as P
-
-
-data XDGDesktop = XDGDesktop
-    { firstSection :: Section
-    , firstComments :: Comment
-    , sections :: Map.Map T.Text Section
-    , trailingComments :: Comment
-    }
-    deriving (Show, Eq)
-
-instance Semigroup XDGDesktop where
-    a <> b = XDGDesktop
-        { firstSection     = firstSection a <> firstSection b
-        , firstComments    = firstComments a <> firstComments b
-        , sections         = sections a <> sections b
-        , trailingComments = trailingComments a <> trailingComments b
-        }
-
-instance Monoid XDGDesktop where
-    mempty = XDGDesktop { firstSection     = mempty
-                        , firstComments    = mempty
-                        , sections         = mempty
-                        , trailingComments = mempty
-                        }
-
-(/*) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
-x /* (Just k , s) = x { sections = Map.insert k s (sections x) }
-x /* (Nothing, s) = x { firstSection = s }
-
-
-newtype Section = Section (Map.Map T.Text Value)
-    deriving (Show, Eq)
-
-instance Semigroup Section where
-    Section a <> Section b = Section $ a <> b
-
-instance Monoid Section where
-    mempty = Section Map.empty
-
-(/**) :: Section -> (T.Text, Value) -> Section
-(Section s) /** (k, v) = Section $ Map.insert k v s
-
-
-data Value = Value
-    { value :: T.Text
-    , preComments :: Comment
-    , postComments :: Comment
-    }
-    deriving (Show, Eq)
-
-instance Data.String.IsString Value where
-    fromString s =
-        Value { value = T.pack s, preComments = mempty, postComments = mempty }
-
-(<#) :: Value -> Comment -> Value
-v <# c = v { preComments = c }
-
-(#>) :: Value -> Comment -> Value
-v #> c = v { postComments = c }
-
-
-newtype Comment = Comment [T.Text]
-    deriving (Show, Eq)
-
-instance Semigroup Comment where
-    Comment a <> Comment b = Comment $ a <> b
-
-instance Monoid Comment where
-    mempty = Comment []
-
-instance Data.String.IsString Comment where
-    fromString s = Comment $ T.pack <$> lines s
 
 
 commentStart :: P.Parser ()
@@ -167,14 +87,12 @@ parseComment = Comment <$> P.some (commentStart >> P.line)
 generate :: XDGDesktop -> T.Text
 generate xdg =
     T.intercalate "\n"
-        $  (generateComment $ firstComments xdg)
-        <> (generateSection $ firstSection xdg)
-        <> (( Map.foldMapWithKey
-                    (\h s -> [generateHeader h] <> generateSection s)
-            $ sections xdg
-            )
-           )
-        <> (generateComment $ trailingComments xdg)
+        $  generateComment (firstComments xdg)
+        <> generateSection (firstSection xdg)
+        <> Map.foldMapWithKey
+               (\h s -> [generateHeader h] <> generateSection s)
+               (sections xdg)
+        <> generateComment (trailingComments xdg)
   where
     generateComment :: Comment -> [T.Text]
     generateComment (Comment cs) = map ("#" <>) cs
@@ -189,7 +107,7 @@ generate xdg =
     generateValue k v =
         let preComments'  = generateComment $ preComments v
             postComments' = generateComment $ postComments v
-            assignment    = k <> "=" <> (value v)
+            assignment    = k <> "=" <> value v
         in  case postComments' of
                 []             -> preComments' <> [assignment]
                 (first : rest) -> preComments' <> [assignment <> first] <> rest
