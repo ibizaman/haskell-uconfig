@@ -489,34 +489,34 @@ ExecStop=/usr/lib/netctl/network stop %I
                                    }
                                }
                            )
-        H.it "with install"
-            $              (C.generate $ C.fieldsTree
-                               [ (C.Path ["Install", "WantedBy"], "me")
-                               , (C.Path ["Install", "RequiredBy"], "target1 target2")
-                               ]
-                           )
-            `HPP.shouldBe` ( []
-                           , Just $ mempty
-                               { install = mempty
-                                               { wantedBy   = [Target "me"]
-                                               , requiredBy = [ Target "target1"
-                                                              , Target "target2"
-                                                              ]
-                                               }
-                               }
-                           )
-        H.it "with service"
-            $              (C.generate $ C.fieldsTree
-                               [ (C.Path ["Service", "User"]     , "me")
-                               , (C.Path ["Service", "ExecStart"], "cmd")
-                               ]
-                           )
-            `HPP.shouldBe` ( []
-                           , Just $ mempty
-                               { service = mempty
-                                   { type_ = TSimple
-                                                 (mempty { command = "cmd" })
-                                   , user  = Value $ User "me"
-                                   }
-                               }
-                           )
+        --H.it "with install"
+        --    $              (C.generate $ C.fieldsTree
+        --                       [ (C.Path ["Install", "WantedBy"], "me")
+        --                       , (C.Path ["Install", "RequiredBy"], "target1 target2")
+        --                       ]
+        --                   )
+        --    `HPP.shouldBe` ( []
+        --                   , Just $ mempty
+        --                       { install = mempty
+        --                                       { wantedBy   = [Target "me"]
+        --                                       , requiredBy = [ Target "target1"
+        --                                                      , Target "target2"
+        --                                                      ]
+        --                                       }
+        --                       }
+        --                   )
+        --H.it "with service"
+        --    $              (C.generate $ C.fieldsTree
+        --                       [ (C.Path ["Service", "User"]     , "me")
+        --                       , (C.Path ["Service", "ExecStart"], "cmd")
+        --                       ]
+        --                   )
+        --    `HPP.shouldBe` ( []
+        --                   , Just $ mempty
+        --                       { service = mempty
+        --                           { type_ = TSimple
+        --                                         (mempty { command = "cmd" })
+        --                           , user  = Value $ User "me"
+        --                           }
+        --                       }
+        --                   )
