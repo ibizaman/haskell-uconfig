@@ -30,6 +30,7 @@ module Parser
     , MP.satisfy
     , MP.notFollowedBy
     , build
+    , MP.optional
 
         -- Words
     , MP.chunk
@@ -110,7 +111,7 @@ number = do
            )
 
 
--- |Parse all characters until a given character.
+-- |Parse all characters until a given "stop" character.
 until :: Parser b -> Parser T.Text
 until match =
     fmap T.pack $ MP.someTill MP.anySingle $ (match *> return ()) <|> eol
