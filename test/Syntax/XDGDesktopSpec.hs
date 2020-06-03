@@ -25,6 +25,12 @@ parsesRight
 parsesRight name p str want =
     H.it name $ C.parse p str `HPP.shouldBe` Right want
 
+roundtrip :: T.Text -> H.SpecWith ()
+roundtrip str =
+    H.it "roundtrip"
+        $              fmap generate (C.parse parser str)
+        `HPP.shouldBe` Right str
+
 
 spec :: H.Spec
 spec = do
@@ -110,3 +116,12 @@ spec = do
             /* (Just "section1", mempty /** ("b", "2"))
             /* (Just "section2", mempty /** ("c", "3"))
             )
+
+    H.describe "roundtrip" $ do
+        roundtrip "a=b"
+        roundtrip "# comment\na=b"
+        roundtrip "# comment\na=b\n[section1]"
+        roundtrip "# comment\na=1\n[section1]\nb=2"
+        roundtrip "# comment\na=1\n[section1]\nb=2\n[section2]"
+        roundtrip "# comment\na=1\n[section1]\nb=2\n[section2]\nc=3"
+        roundtrip "# comment\na=1\n[section1]\n# comment2\nb=2\n[section2]\nc=3"

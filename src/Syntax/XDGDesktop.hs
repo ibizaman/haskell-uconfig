@@ -29,6 +29,9 @@ module Syntax.XDGDesktop
     , parseValue
     , parseComment
     , parseHeader
+
+    -- Generate
+    , generate
     )
 where
 
@@ -160,3 +163,33 @@ parseValue = do
 
 parseComment :: P.Parser Comment
 parseComment = Comment <$> P.some (commentStart >> P.line)
+
+generate :: XDGDesktop -> T.Text
+generate xdg =
+    T.intercalate "\n"
+        $  (generateComment $ firstComments xdg)
+        <> (generateSection $ firstSection xdg)
+        <> (( Map.foldMapWithKey
+                    (\h s -> [generateHeader h] <> generateSection s)
+            $ sections xdg
+            )
+           )
+        <> (generateComment $ trailingComments xdg)
+  where
+    generateComment :: Comment -> [T.Text]
+    generateComment (Comment cs) = map ("#" <>) cs
+
+    generateHeader :: T.Text -> T.Text
+    generateHeader h = "[" <> h <> "]"
+
+    generateSection :: Section -> [T.Text]
+    generateSection (Section s) = Map.foldMapWithKey generateValue s
+
+    generateValue :: T.Text -> Value -> [T.Text]
+    generateValue k v =
+        let preComments'  = generateComment $ preComments v
+            postComments' = generateComment $ postComments v
+            assignment    = k <> "=" <> (value v)
+        in  case postComments' of
+                []             -> preComments' <> [assignment]
+                (first : rest) -> preComments' <> [assignment <> first] <> rest
