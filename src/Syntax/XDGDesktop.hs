@@ -56,7 +56,7 @@ parser =
 
 parseSections :: P.Parser Sections
 parseSections =
-    Sections . Map.fromList <$> P.some ((,) <$> parseHeader <*> parseSection)
+    newSections . Map.fromList <$> P.some ((,) <$> parseHeader <*> parseSection)
 
 
 parseHeader :: P.Parser T.Text
@@ -64,7 +64,7 @@ parseHeader = C.anyHeader
 
 
 parseSection :: P.Parser Section
-parseSection = Section . Map.fromList . Maybe.catMaybes <$> P.many
+parseSection = newSection . Map.fromList . Maybe.catMaybes <$> P.many
     ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
 
 
@@ -74,38 +74,30 @@ parseValue = do
     C.Assignment key v <-
         C.anyAssignment $ P.until $ P.lookAhead $ commentStart <|> P.eol
     postComments' <- Maybe.fromMaybe mempty <$> P.optional parseComment
-    return
-        ( C.plain key
-        , Value { value        = C.plain v
-                , preComments  = preComments'
-                , postComments = postComments'
-                }
-        )
+    return (C.plain key, newValue (C.plain v) <# preComments' #> postComments')
 
 
 parseComment :: P.Parser Comment
-parseComment = Comment <$> P.some (commentStart >> P.line)
+parseComment = newComment <$> P.some (commentStart >> P.line)
 
 generate :: XDGDesktop -> T.Text
 generate xdg =
     T.intercalate "\n"
         $  generateComment (firstComments xdg)
         <> generateSection (firstSection xdg)
-        <> let (Sections s') = sections xdg
-           in
-               Map.foldMapWithKey
-                       (\h s -> [generateHeader h] <> generateSection s)
-                       s'
-                   <> generateComment (trailingComments xdg)
+        <> Map.foldMapWithKey
+               (\h s -> [generateHeader h] <> generateSection s)
+               (unSections $ sections xdg)
+        <> generateComment (trailingComments xdg)
   where
     generateComment :: Comment -> [T.Text]
-    generateComment (Comment cs) = map ("#" <>) cs
+    generateComment cs = map ("#" <>) $ unComment cs
 
     generateHeader :: T.Text -> T.Text
     generateHeader h = "[" <> h <> "]"
 
     generateSection :: Section -> [T.Text]
-    generateSection (Section s) = Map.foldMapWithKey generateValue s
+    generateSection s = Map.foldMapWithKey generateValue $ unSection s
 
     generateValue :: T.Text -> Value -> [T.Text]
     generateValue k v =

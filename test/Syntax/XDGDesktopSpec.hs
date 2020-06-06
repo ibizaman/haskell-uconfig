@@ -39,9 +39,9 @@ spec = do
         parsesRight "one line" parseComment "# my comment"   " my comment"
         parsesRight "one line" parseComment "# my comment\n" " my comment"
         parsesRight "two lines" parseComment "# my \n# comment"
-            $ Comment [" my ", " comment"]
+            $ newComment [" my ", " comment"]
         parsesRight "two lines" parseComment "# my \n# comment\n"
-            $ Comment [" my ", " comment"]
+            $ newComment [" my ", " comment"]
 
     H.describe "parseValue" $ do
         parsesLeft "empty"      parseValue ""
@@ -64,31 +64,31 @@ spec = do
             "# my pre\n# comment\na=b   # my\n# post comment"
             ( "a"
             , "b   "
-            <# (Comment [" my pre", " comment"])
-            #> (Comment [" my", " post comment"])
+            <# (newComment [" my pre", " comment"])
+            #> (newComment [" my", " post comment"])
             )
 
     H.describe "parseSection" $ do
-        parsesRight "one value" parseSection "a=b" $ Section $ Map.fromList
+        parsesRight "one value" parseSection "a=b" $ newSection $ Map.fromList
             [("a", "b")]
         parsesRight "two values" parseSection "a=b\nc=d"
-            $ Section
+            $ newSection
             $ Map.fromList [("a", "b"), ("c", "d")]
         parsesRight "two values separated" parseSection "a=b\n\nc=d"
-            $ Section
+            $ newSection
             $ Map.fromList [("a", "b"), ("c", "d")]
         parsesRight "one value with comment" parseSection "#comment\na=b"
-            $ Section
+            $ newSection
             $ Map.fromList [("a", "b" <# "comment")]
         parsesRight "two values with comment"
                     parseSection
                     "#comment\na=b\n#comment2\nc=d"
-            $ Section
+            $ newSection
             $ Map.fromList [("a", "b" <# "comment"), ("c", "d" <# "comment2")]
         parsesRight "two values with comment separated"
                     parseSection
                     "#comment\na=b\n\n#comment2\nc=d"
-            $ Section
+            $ newSection
             $ Map.fromList [("a", "b" <# "comment"), ("c", "d" <# "comment2")]
 
     H.describe "parse" $ do
@@ -101,7 +101,7 @@ spec = do
             "parses first section"
             parser
             "a=b"
-            (mempty { firstSection = Section $ Map.singleton "a" "b" })
+            (mempty { firstSection = newSection $ Map.singleton "a" "b" })
         parsesRight
             "parses first comment and section"
             parser

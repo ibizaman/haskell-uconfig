@@ -11,10 +11,16 @@ Helpers to create Parsers and Generators.
 -}
 module Syntax
     ( XDGDesktop(..)
-    , Sections(..)
-    , Section(..)
-    , Value(..)
-    , Comment(..)
+    , Sections
+    , newSections
+    , unSections
+    , Section
+    , newSection
+    , unSection
+    , Value(value, preComments, postComments)
+    , newValue
+    , Comment(unComment)
+    , newComment
     , (/*)
     , (/**)
     , (<#)
@@ -58,8 +64,13 @@ x /* (Just k, s) = x
 x /* (Nothing, s) = x { firstSection = s }
 
 
-newtype Sections = Sections (Map.Map T.Text Section)
+newtype Sections = Sections {
+      unSections :: Map.Map T.Text Section
+    }
     deriving (Show, Eq)
+
+newSections :: Map.Map T.Text Section -> Sections
+newSections = Sections
 
 instance Semigroup Sections where
     Sections a <> Sections b = Sections $ a <> b
@@ -68,8 +79,13 @@ instance Monoid Sections where
     mempty = Sections Map.empty
 
 
-newtype Section = Section (Map.Map T.Text Value)
+newtype Section = Section {
+      unSection :: Map.Map T.Text Value
+    }
     deriving (Show, Eq)
+
+newSection :: Map.Map T.Text Value -> Section
+newSection = Section
 
 instance Semigroup Section where
     Section a <> Section b = Section $ a <> b
@@ -88,6 +104,10 @@ data Value = Value
     }
     deriving (Show, Eq)
 
+newValue :: T.Text -> Value
+newValue v =
+    Value { value = v, preComments = Comment [], postComments = Comment [] }
+
 instance Data.String.IsString Value where
     fromString s =
         Value { value = T.pack s, preComments = mempty, postComments = mempty }
@@ -99,8 +119,13 @@ v <# c = v { preComments = c }
 v #> c = v { postComments = c }
 
 
-newtype Comment = Comment [T.Text]
+newtype Comment = Comment {
+      unComment ::  [T.Text]
+    }
     deriving (Show, Eq)
+
+newComment :: [T.Text] -> Comment
+newComment = Comment
 
 instance Semigroup Comment where
     Comment a <> Comment b = Comment $ a <> b
