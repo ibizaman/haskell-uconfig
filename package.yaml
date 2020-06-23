@@ -15,6 +15,7 @@ dependencies:
     - text == 1.2.3.1
     - containers == 0.6.0.1
     - megaparsec == 7.0.5
+    - generic-data == 0.7.0.0
 
 default-extensions:
     - OverloadedStrings

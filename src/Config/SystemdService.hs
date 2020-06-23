@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -46,6 +48,12 @@ import           Control.Applicative            ( (<|>) )
 import           Data.Functor                   ( ($>) )
 import qualified Data.String
 import qualified Data.Text                     as T
+import           Data.Semigroup                 ( Semigroup(..)
+                                                , First(..)
+                                                , Last(..)
+                                                )
+import           GHC.Generics                   ( Generic )
+import           Generic.Data                   ( Generically(..) )
 import qualified Parser                        as P
 import qualified Config                        as C
 import qualified Syntax                        as S
@@ -88,17 +96,8 @@ data SystemdService = SystemdService
   , install :: Install
   , service :: Service
   }
-  deriving(Eq, Show)
-
-instance Semigroup SystemdService where
-    a <> b = SystemdService { unit    = unit a <> unit b
-                            , install = install a <> install b
-                            , service = service a <> service b
-                            }
-
-instance Monoid SystemdService where
-    mempty =
-        SystemdService { unit = mempty, install = mempty, service = mempty }
+  deriving (Eq, Show, Generic)
+  deriving (Semigroup, Monoid) via (Generically SystemdService)
 
 instance C.Config S.XDGDesktop SystemdService where
     parser xdg =
@@ -124,27 +123,8 @@ data Unit = Unit
   , requires :: [S.Value Target]
   , conflicts :: [S.Value Target]
   }
-  deriving(Eq, Show)
-
-instance Semigroup Unit where
-    a <> b = Unit { description   = description a <> description b
-                  , documentation = documentation a <> documentation b
-                  , before        = before a <> before b
-                  , after         = after a <> after b
-                  , wants         = wants a <> wants b
-                  , requires      = requires a <> requires b
-                  , conflicts     = conflicts a <> conflicts b
-                  }
-
-instance Monoid Unit where
-    mempty = Unit { description   = mempty
-                  , documentation = mempty
-                  , before        = mempty
-                  , after         = mempty
-                  , wants         = mempty
-                  , requires      = mempty
-                  , conflicts     = mempty
-                  }
+  deriving (Eq, Show, Generic)
+  deriving (Semigroup, Monoid) via (Generically Unit)
 
 instance C.Config S.Section Unit where
     parser sec =
@@ -168,16 +148,11 @@ instance C.Config S.Section Unit where
             /** ("Conflicts"    , C.unparser $ conflicts u)
 
 newtype Description = Description T.Text
-    deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Description)
 
 instance Data.String.IsString Description where
     fromString = Description . T.pack
-
-instance Semigroup Description where
-    Description a <> Description b = Description (a <> b)
-
-instance Monoid Description where
-    mempty = Description ""
 
 instance C.Config T.Text Description where
     parser = fmap Description . C.parseText P.words
@@ -186,16 +161,11 @@ instance C.Config T.Text Description where
 
 
 newtype Documentation = Documentation T.Text
-    deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Documentation)
 
 instance Data.String.IsString Documentation where
     fromString = Documentation . T.pack
-
-instance Semigroup Documentation where
-    Documentation a <> Documentation b = Documentation (a <> b)
-
-instance Monoid Documentation where
-    mempty = Documentation mempty
 
 instance C.Config T.Text Documentation where
     parser = fmap Documentation
@@ -205,16 +175,11 @@ instance C.Config T.Text Documentation where
 
 
 newtype Target = Target T.Text
-    deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Target)
 
 instance Data.String.IsString Target where
     fromString = Target . T.pack
-
-instance Semigroup Target where
-    Target a <> Target b = Target (a <> b)
-
-instance Monoid Target where
-    mempty = Target mempty
 
 instance C.Config T.Text Target where
     parser = fmap Target . C.parseText (C.plain <$> C.spaced (C.quoted P.word))
@@ -225,18 +190,11 @@ instance C.Config T.Text Target where
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-  { wantedBy :: [S.Value Target]
-  , requiredBy :: [S.Value Target]
-  }
-  deriving(Eq, Show)
-
-instance Semigroup Install where
-    a <> b = Install { wantedBy   = wantedBy a <> wantedBy b
-                     , requiredBy = requiredBy a <> requiredBy b
-                     }
-
-instance Monoid Install where
-    mempty = Install { wantedBy = mempty, requiredBy = mempty }
+    { wantedBy :: [S.Value Target]
+    , requiredBy :: [S.Value Target]
+    }
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Install)
 
 instance C.Config S.Section Install where
     parser sec =
@@ -254,63 +212,25 @@ instance C.Config S.Section Install where
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#Options
 -- https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=N
 data Service = Service
-  { execCondition :: [S.Value Exec]
-  , execStartPre :: [S.Value Exec]
-  , execStartPost :: [S.Value Exec]
-  , type_ :: Type
-  , execReload :: EmptyDefault (S.Value Exec)
-  , execStop :: [S.Value Exec]
-  , execStopPost :: [S.Value Exec]
-  , remainAfterExit :: EmptyDefault (S.Value RemainAfterExit)
-  , user :: EmptyDefault (S.Value User)
-  , group :: EmptyDefault (S.Value Group)
-  , workingDirectory :: EmptyDefault (S.Value WorkingDirectory)
-  , standardOutput :: EmptyDefault (S.Value Output)
-  , standardError :: EmptyDefault (S.Value Output)
-  , tasksMax :: EmptyDefault (S.Value TasksMax)
-  , restart :: EmptyDefault (S.Value Restart)
-  , privateTmp :: EmptyDefault (S.Value PrivateTmp)
-  }
-  deriving(Eq, Show)
-
-instance Semigroup Service where
-    a <> b = Service
-        { execCondition    = execCondition a <> execCondition b
-        , execStartPre     = execStartPre a <> execStartPre b
-        , execStartPost    = execStartPost a <> execStartPost b
-        , type_            = type_ a <> type_ b
-        , execReload       = execReload a <> execReload b
-        , execStop         = execStop a <> execStop b
-        , execStopPost     = execStopPost a <> execStopPost b
-        , remainAfterExit  = remainAfterExit a <> remainAfterExit b
-        , user             = user a <> user b
-        , group            = group a <> group b
-        , workingDirectory = workingDirectory a <> workingDirectory b
-        , standardOutput   = standardOutput a <> standardOutput b
-        , standardError    = standardError a <> standardError b
-        , tasksMax         = tasksMax a <> tasksMax b
-        , restart          = restart a <> restart b
-        , privateTmp       = privateTmp a <> privateTmp b
-        }
-
-instance Monoid Service where
-    mempty = Service { execCondition    = mempty
-                     , execStartPre     = mempty
-                     , execStartPost    = mempty
-                     , type_            = mempty
-                     , execReload       = mempty
-                     , execStop         = mempty
-                     , execStopPost     = mempty
-                     , remainAfterExit  = mempty
-                     , user             = mempty
-                     , group            = mempty
-                     , workingDirectory = mempty
-                     , standardOutput   = mempty
-                     , standardError    = mempty
-                     , tasksMax         = mempty
-                     , restart          = mempty
-                     , privateTmp       = mempty
-                     }
+    { execCondition :: [S.Value Exec]
+    , execStartPre :: [S.Value Exec]
+    , execStartPost :: [S.Value Exec]
+    , type_ :: Type
+    , execReload :: EmptyDefault (S.Value Exec)
+    , execStop :: [S.Value Exec]
+    , execStopPost :: [S.Value Exec]
+    , remainAfterExit :: EmptyDefault (S.Value RemainAfterExit)
+    , user :: EmptyDefault (S.Value User)
+    , group :: EmptyDefault (S.Value Group)
+    , workingDirectory :: EmptyDefault (S.Value WorkingDirectory)
+    , standardOutput :: EmptyDefault (S.Value Output)
+    , standardError :: EmptyDefault (S.Value Output)
+    , tasksMax :: EmptyDefault (S.Value TasksMax)
+    , restart :: EmptyDefault (S.Value Restart)
+    , privateTmp :: EmptyDefault (S.Value PrivateTmp)
+    }
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Service)
 
 instance C.Config S.Section Service where
     parser sec =
@@ -385,15 +305,15 @@ instance C.Config S.Section Service where
 -- |A Systemd [Type] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=
 data Type
-  = TNothing
-  | TSimple (S.Value Exec)
-  | TExec (S.Value Exec)
-  | TForking (EmptyDefault (S.Value PIDFile)) (S.Value Exec)
-  | TOneShot [S.Value Exec]
-  | TDBus (S.Value BusName) (S.Value Exec)
-  | TNotify (S.Value NotifyAccess) (S.Value Exec)
-  | TIdle (S.Value Exec)
-  deriving(Eq, Show)
+    = TNothing
+    | TSimple (S.Value Exec)
+    | TExec (S.Value Exec)
+    | TForking (EmptyDefault (S.Value PIDFile)) (S.Value Exec)
+    | TOneShot [S.Value Exec]
+    | TDBus (S.Value BusName) (S.Value Exec)
+    | TNotify (S.Value NotifyAccess) (S.Value Exec)
+    | TIdle (S.Value Exec)
+    deriving (Eq, Show)
 
 instance Semigroup Type where
     a           <> TNothing    = a
@@ -432,12 +352,12 @@ parseType section =
 -- |Common record for all Exec commands like ExecStart and ExecStop.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=
 data Exec = Exec
-  { overrideName :: Bool
-  , continueOnError :: Bool
-  , noEnvironmentVariableSubstitution :: Bool
-  , command :: T.Text
-  }
-  deriving(Eq, Show)
+    { overrideName :: Bool
+    , continueOnError :: Bool
+    , noEnvironmentVariableSubstitution :: Bool
+    , command :: T.Text
+    }
+    deriving (Eq, Show)
 
 instance Semigroup Exec where
     a <> b = Exec
@@ -478,13 +398,11 @@ instance C.Config T.Text Exec where
 
 
 newtype User = User T.Text
-  deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last User))
 
 instance Data.String.IsString User where
     fromString = User . T.pack
-
-instance Semigroup User where
-    _ <> b = b
 
 instance C.Config T.Text User where
     parser = pure . User
@@ -493,13 +411,11 @@ instance C.Config T.Text User where
 
 
 newtype Group = Group T.Text
-  deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last Group))
 
 instance Data.String.IsString Group where
     fromString = Group . T.pack
-
-instance Semigroup Group where
-    _ <> b = b
 
 instance C.Config T.Text Group where
     parser = pure . Group
@@ -508,13 +424,11 @@ instance C.Config T.Text Group where
 
 
 newtype WorkingDirectory = WorkingDirectory T.Text
-  deriving(Eq, Show)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last WorkingDirectory))
 
 instance Data.String.IsString WorkingDirectory where
     fromString = WorkingDirectory . T.pack
-
-instance Semigroup WorkingDirectory where
-    _ <> b = b
 
 instance C.Config T.Text WorkingDirectory where
     parser = pure . WorkingDirectory
@@ -523,10 +437,8 @@ instance C.Config T.Text WorkingDirectory where
 
 
 data Output = OJournal
-  deriving(Eq, Show)
-
-instance Semigroup Output where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last Output))
 
 instance C.Config T.Text Output where
     parser = C.parseText (P.choice [P.chunk "journal" $> OJournal])
@@ -535,10 +447,8 @@ instance C.Config T.Text Output where
 
 
 data TasksMax = TasksMax Int | TasksMaxInfinity
-    deriving(Eq, Show)
-
-instance Semigroup TasksMax where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last TasksMax))
 
 instance Monoid TasksMax where
     mempty = TasksMax 0
@@ -551,17 +461,19 @@ instance C.Config T.Text TasksMax where
     unparser TasksMaxInfinity = "infinity"
 
 
-data Restart = RNo
-             | RAlways
-             | ROnSuccess
-             | ROnFailure
-             | ROnAbnormal
-             | ROnAbort
-             | ROnWatchdog
-  deriving(Eq, Show)
+data Restart
+    = RNo
+    | RAlways
+    | ROnSuccess
+    | ROnFailure
+    | ROnAbnormal
+    | ROnAbort
+    | ROnWatchdog
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last Restart))
 
-instance Semigroup Restart where
-    _ <> b = b
+instance Monoid Restart where
+    mempty = RNo
 
 instance C.Config T.Text Restart where
     parser = C.parseText
@@ -588,10 +500,8 @@ instance C.Config T.Text Restart where
 -- |A convenience type to represent PIDFile=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=
 newtype PIDFile = PIDFile T.Text
-  deriving(Eq, Show)
-
-instance Semigroup PIDFile where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last PIDFile))
 
 instance C.Config T.Text PIDFile where
     parser = pure . PIDFile
@@ -602,10 +512,8 @@ instance C.Config T.Text PIDFile where
 -- |A convenience type to represent RemainAfterExit=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=
 newtype RemainAfterExit = RemainAfterExit Bool
-  deriving(Eq, Show)
-
-instance Semigroup RemainAfterExit where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last RemainAfterExit))
 
 instance C.Config T.Text RemainAfterExit where
     parser = fmap RemainAfterExit <$> C.parseBool
@@ -616,10 +524,8 @@ instance C.Config T.Text RemainAfterExit where
 -- |A convenience type to represent BusName=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
 newtype BusName = BusName T.Text
-  deriving(Eq, Show)
-
-instance Semigroup BusName where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last BusName))
 
 instance C.Config T.Text BusName where
     parser = pure . BusName
@@ -630,14 +536,15 @@ instance C.Config T.Text BusName where
 -- |Represents a NotifyAccess=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=
 data NotifyAccess
-  = NANone
-  | NAMain
-  | NAExec
-  | NAAll
-  deriving(Eq, Show)
+    = NANone
+    | NAMain
+    | NAExec
+    | NAAll
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last NotifyAccess))
 
-instance Semigroup NotifyAccess where
-    _ <> b = b
+instance Monoid NotifyAccess where
+    mempty = NANone
 
 instance C.Config T.Text NotifyAccess where
     parser = C.parseText $ P.choice
@@ -656,10 +563,8 @@ instance C.Config T.Text NotifyAccess where
 -- |A convenience type to represent PrivateTmp=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
 newtype PrivateTmp = PrivateTmp Bool
-  deriving(Eq, Show)
-
-instance Semigroup PrivateTmp where
-    _ <> b = b
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last PrivateTmp))
 
 instance C.Config T.Text PrivateTmp where
     parser = fmap PrivateTmp <$> C.parseBool
