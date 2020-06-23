@@ -1,64 +1,64 @@
 # https://github.com/sol/hpack
 
-name:                uconfig
-version:             0.0.0.1
-github:              "ibizaman/haskell-uconfig"
-license:             BSD3
-author:              "Pierre Penninckx"
-maintainer:          "ibizapeanut@gmail.com"
-copyright:           "2020 Pierre Penninckx"
+name: uconfig
+version: 0.0.0.1
+github: "ibizaman/haskell-uconfig"
+license: BSD3
+author: "Pierre Penninckx"
+maintainer: "ibizapeanut@gmail.com"
+copyright: "2020 Pierre Penninckx"
 
-description:         Please see the README on GitHub at <https://github.com/ibizaman/haskell-uconfig#readme>
+description: Please see the README on GitHub at <https://github.com/ibizaman/haskell-uconfig#readme>
 
 dependencies:
-  - base == 4.12.0.0
-  - text == 1.2.3.1
-  - containers == 0.6.0.1
-  - megaparsec == 7.0.5
+    - base == 4.12.0.0
+    - text == 1.2.3.1
+    - containers == 0.6.0.1
+    - megaparsec == 7.0.5
 
 default-extensions:
-  - OverloadedStrings
+    - OverloadedStrings
 
 library:
-  source-dirs: src
-  dependencies:
-    - optparse-applicative == 0.14.3.0
+    source-dirs: src
+    dependencies:
+        - optparse-applicative == 0.14.3.0
 
 executables:
-  uconfig:
-    main:                main.hs
-    source-dirs:         app
-    dependencies:
-      - uconfig
-      - nicify-lib == 1.0.1
+    uconfig:
+        main: main.hs
+        source-dirs: app
+        dependencies:
+            - uconfig
+            - nicify-lib == 1.0.1
 
 tests:
-  uconfig-test:
-    main:                Spec.hs
-    source-dirs:         test
-    dependencies:
-      - uconfig
-      - hspec == 2.7.1
-      - hspec-core == 2.7.1
-      - hspec-discover == 2.7.1
-      - hspec-expectations-pretty-diff == 0.7.2.5
-      - optparse-applicative == 0.14.3.0
-      - raw-strings-qq == 1.1
+    uconfig-test:
+        main: Spec.hs
+        source-dirs: test
+        dependencies:
+            - uconfig
+            - hspec == 2.7.1
+            - hspec-core == 2.7.1
+            - hspec-discover == 2.7.1
+            - hspec-expectations-pretty-diff == 0.7.2.5
+            - optparse-applicative == 0.14.3.0
+            - raw-strings-qq == 1.1
 
 ghc-options:
-  - -Wall
-  - -Wcompat
-  - -Wincomplete-record-updates
-  - -Wincomplete-uni-patterns
-  - -Wredundant-constraints
-  - -fwarn-incomplete-patterns
-  - -fwarn-incomplete-record-updates
-  - -fwarn-incomplete-uni-patterns
-  - -fwarn-missing-signatures
-  - -fwarn-name-shadowing
-  - -fwarn-overlapping-patterns
-  - -fwarn-tabs
-  - -fwarn-unused-imports
-  - -rtsopts
-  - -threaded
-  - -with-rtsopts=-N
+    - -Wall
+    - -Wcompat
+    - -Wincomplete-record-updates
+    - -Wincomplete-uni-patterns
+    - -Wredundant-constraints
+    - -fwarn-incomplete-patterns
+    - -fwarn-incomplete-record-updates
+    - -fwarn-incomplete-uni-patterns
+    - -fwarn-missing-signatures
+    - -fwarn-name-shadowing
+    - -fwarn-overlapping-patterns
+    - -fwarn-tabs
+    - -fwarn-unused-imports
+    - -rtsopts
+    - -threaded
+    - -with-rtsopts=-N
