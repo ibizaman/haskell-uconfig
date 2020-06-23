@@ -129,13 +129,13 @@ data Unit = Unit
 instance C.Config S.Section Unit where
     parser sec =
         Unit
-            <$> (C.parseOneOptional C.parser "Description" sec)
-            <*> (C.parseMultiple C.parser "Documentation" sec)
-            <*> (C.parseMultiple C.parser "Before" sec)
-            <*> (C.parseMultiple C.parser "After" sec)
-            <*> (C.parseMultiple C.parser "Wants" sec)
-            <*> (C.parseMultiple C.parser "Requires" sec)
-            <*> (C.parseMultiple C.parser "Conflicts" sec)
+            <$> (C.parseOneOptional "Description" sec)
+            <*> (C.parseMultiple "Documentation" sec)
+            <*> (C.parseMultiple "Before" sec)
+            <*> (C.parseMultiple "After" sec)
+            <*> (C.parseMultiple "Wants" sec)
+            <*> (C.parseMultiple "Requires" sec)
+            <*> (C.parseMultiple "Conflicts" sec)
 
     unparser u =
         mempty
@@ -199,8 +199,8 @@ data Install = Install
 instance C.Config S.Section Install where
     parser sec =
         Install
-            <$> (C.parseMultiple C.parser "WantedBy" sec)
-            <*> (C.parseMultiple C.parser "RequiredBy" sec)
+            <$> (C.parseMultiple "WantedBy" sec)
+            <*> (C.parseMultiple "RequiredBy" sec)
 
     unparser u =
         mempty
@@ -235,22 +235,22 @@ data Service = Service
 instance C.Config S.Section Service where
     parser sec =
         Service
-            <$> (C.parseMultiple C.parser "ExecCondition" sec)
-            <*> (C.parseMultiple C.parser "ExecStartPre" sec)
-            <*> (C.parseMultiple C.parser "ExecstartPost" sec)
+            <$> (C.parseMultiple "ExecCondition" sec)
+            <*> (C.parseMultiple "ExecStartPre" sec)
+            <*> (C.parseMultiple "ExecstartPost" sec)
             <*> parseType sec
-            <*> (C.parseOneOptional C.parser "ExecReload" sec)
-            <*> (C.parseMultiple C.parser "ExecStop" sec)
-            <*> (C.parseMultiple C.parser "ExecStopPost" sec)
-            <*> (C.parseOneOptional C.parser "RemainAfterExit" sec)
-            <*> (C.parseOneOptional C.parser "User" sec)
-            <*> (C.parseOneOptional C.parser "Group" sec)
-            <*> (C.parseOneOptional C.parser "WorkingDirectory" sec)
-            <*> (C.parseOneOptional C.parser "StandardOutput" sec)
-            <*> (C.parseOneOptional C.parser "StandardError" sec)
-            <*> (C.parseOneOptional C.parser "TasksMax" sec)
-            <*> (C.parseOneOptional C.parser "Restart" sec)
-            <*> (C.parseOneOptional C.parser "PrivateTmp" sec)
+            <*> (C.parseOneOptional "ExecReload" sec)
+            <*> (C.parseMultiple "ExecStop" sec)
+            <*> (C.parseMultiple "ExecStopPost" sec)
+            <*> (C.parseOneOptional "RemainAfterExit" sec)
+            <*> (C.parseOneOptional "User" sec)
+            <*> (C.parseOneOptional "Group" sec)
+            <*> (C.parseOneOptional "WorkingDirectory" sec)
+            <*> (C.parseOneOptional "StandardOutput" sec)
+            <*> (C.parseOneOptional "StandardError" sec)
+            <*> (C.parseOneOptional "TasksMax" sec)
+            <*> (C.parseOneOptional "Restart" sec)
+            <*> (C.parseOneOptional "PrivateTmp" sec)
 
     unparser u =
         let
@@ -325,25 +325,24 @@ instance Monoid Type where
 
 parseType :: S.Section -> C.ParseResult Type
 parseType section =
-    fmap S.value <$> C.parseOneOptional pure "Type" section >>= \case
-        Nothing       -> TSimple <$> C.parseOne C.parser "ExecStart" section
-        Just "simple" -> TSimple <$> C.parseOne C.parser "ExecStart" section
-        Just "exec"   -> TExec <$> C.parseOne C.parser "ExecStart" section
+    fmap S.value <$> C.parseOneOptional "Type" section >>= \case
+        Nothing       -> TSimple <$> C.parseOne "ExecStart" section
+        Just "simple" -> TSimple <$> C.parseOne "ExecStart" section
+        Just "exec"   -> TExec <$> C.parseOne "ExecStart" section
         Just "forking" ->
             TForking
-                <$> C.parseOneOptional C.parser "PidFile" section
-                <*> C.parseOne C.parser "ExecStart" section
-        Just "oneshot" ->
-            TOneShot <$> C.parseMultiple C.parser "ExecStart" section
+                <$> C.parseOneOptional "PidFile" section
+                <*> C.parseOne "ExecStart" section
+        Just "oneshot" -> TOneShot <$> C.parseMultiple "ExecStart" section
         Just "dbus" ->
             TDBus
-                <$> C.parseOne C.parser "BusName" section
-                <*> C.parseOne C.parser "ExecStart" section
+                <$> C.parseOne "BusName" section
+                <*> C.parseOne "ExecStart" section
         Just "notify" ->
             TNotify
-                <$> C.parseOne C.parser "NotifyAccess" section
-                <*> C.parseOne C.parser "ExecStart" section
-        Just "idle" -> TIdle <$> C.parseOne C.parser "ExecStart" section
+                <$> C.parseOne "NotifyAccess" section
+                <*> C.parseOne "ExecStart" section
+        Just "idle" -> TIdle <$> C.parseOne "ExecStart" section
         Just other  -> C.ParseError $ C.UnsupportedValue
             other
             ["simple", "exec", "forking", "oneshot", "dbus", "notify", "idle"]

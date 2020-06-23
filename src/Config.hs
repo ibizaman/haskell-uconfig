@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-|
@@ -109,6 +110,10 @@ instance (Config a b) => Config (S.Value a) (S.Value b) where
     parser v = parser (S.value v) >>= \v' -> pure $ v { S.value = v' }
     unparser v = v { S.value = unparser $ S.value v }
 
+instance Config T.Text T.Text where
+    parser   = ParseSuccess
+    unparser = id
+
 class ToList m where
     toList :: m a -> [a]
 
@@ -146,24 +151,17 @@ unparseBool True  = "true"
 unparseBool False = "false"
 
 parseMultiple
-    :: (T.Text -> ParseResult v)
-    -> T.Text
-    -> S.Section
-    -> ParseResult [S.Value v]
-parseMultiple p field sec =
-    sequenceA $ liftValue . fmap p <$> S.getValue sec field
+    :: (Config T.Text v) => T.Text -> S.Section -> ParseResult [S.Value v]
+parseMultiple field sec =
+    sequenceA $ liftValue . fmap parser <$> S.getValue sec field
   where
     liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
     liftValue v = case S.value v of
         ParseSuccess v' -> ParseSuccess (v { S.value = v' })
         ParseError   e  -> ParseError e
 
-parseOne
-    :: (T.Text -> ParseResult v)
-    -> T.Text
-    -> S.Section
-    -> ParseResult (S.Value v)
-parseOne p field sec = parseMultiple p field sec >>= asResult
+parseOne :: (Config T.Text v) => T.Text -> S.Section -> ParseResult (S.Value v)
+parseOne field sec = parseMultiple field sec >>= asResult
   where
     asResult l = case l of
         []  -> ParseError (FieldNotFound field)
@@ -171,12 +169,11 @@ parseOne p field sec = parseMultiple p field sec >>= asResult
         _   -> ParseError (MultipleFound field)
 
 parseOneOptional
-    :: (Monoid (m (S.Value v)), Applicative m)
-    => (T.Text -> ParseResult v)
-    -> T.Text
+    :: (Config T.Text v, Monoid (m (S.Value v)), Applicative m)
+    => T.Text
     -> S.Section
     -> ParseResult (m (S.Value v))
-parseOneOptional p field sec = asMaybe <$> parseMultiple p field sec
+parseOneOptional field sec = asMaybe <$> parseMultiple field sec
   where
     asMaybe l = case l of
         [x] -> pure x
