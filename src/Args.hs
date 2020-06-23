@@ -19,7 +19,6 @@ module Args
     )
 where
 
-import qualified Config                        as C
 import qualified Control.Applicative           as CApp
 import qualified Data.Text                     as T
 import qualified Options.Applicative           as Args
@@ -38,4 +37,4 @@ desc d = Args.fullDesc <> Args.progDesc d
 
 parsecArg :: P.Parser v -> Args.ReadM v
 parsecArg parser =
-    Args.eitherReader (mapLeft T.unpack . C.parse parser . T.pack)
+    Args.eitherReader (mapLeft T.unpack . P.parse parser . T.pack)

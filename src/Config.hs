@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-|
 Module      : Config
 Description : Config file parsers
@@ -11,38 +13,49 @@ The Config module provides functions for parsing config files.
 -}
 module Config
     ( Config(..)
-    , Flat(..)
-    , Sectioned(..)
+    , ParseResult(..)
+    , ParseError(..)
+    , ToList(..)
+
+      -- Config parsers
+    , parseText
+    , parseBool
+    , unparseBool
+    , parseOne
+    , parseOneOptional
+    , parseMultiple
+
+      -- Parsec parsers
     , Assignment(..)
-    , Quoted(..)
-    , Spaced(..)
-    , Path(..)
-    -- , PathValue(..)
-    , FieldsTree(..)
-    , GenerateResult(..)
-    , GenerateError(..)
-    , P.parse
-    , flat
-    , sectioned
-    , fetchInSection
-    , assignment
     , anyAssignment
-    , header
     , anyHeader
-    , section
-    , anySection
+    , Spaced(..)
     , spaced
+    , Quoted(..)
     , quoted
     , plain
-    , (</>)
-    , path
+
+      -- FieldsTree related
+    , FieldsTree(..)
     , fieldsTree
+    , path
     , pathValue
-    , generate
-    , generateError
-    , generateSuccess
-    , generateEither
-    , mapLeft
+
+      -- Flat config
+    , Flat(..)
+    , flat
+
+      -- Sectioned config
+    , Sectioned(..)
+    , sectioned
+
+      -- Misc
+    , Path(..)
+    , header
+    , section
+    , anySection
+    , assignment
+    , fetchInSection
     )
 where
 
@@ -55,55 +68,119 @@ import           Data.Functor                   ( ($>) )
 import           Data.Map.Strict                ( Map )
 import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
-import           Utils                          ( mapLeft )
 
 import qualified Parser                        as P
+import qualified Syntax                        as S
 
 
-newtype GenerateResult a = GenerateResult {
-      unGenerateResult :: ([GenerateError], Maybe a)
-                        }
+data ParseResult v
+      = ParseError ParseError
+      | ParseSuccess  v
+    deriving(Show, Eq)
 
-instance (Semigroup a) => Semigroup (GenerateResult a) where
-    GenerateResult (errsLeft, left) <> GenerateResult (errsRight, right) =
-        GenerateResult (errsLeft <> errsRight, left <> right)
+data ParseError
+      = Unparseable T.Text
+      | FieldNotFound T.Text
+      | MultipleFound T.Text
+      | UnsupportedValue T.Text [T.Text]
+    deriving(Show, Eq)
 
-instance (Semigroup a) => Monoid (GenerateResult a) where
-    mempty = GenerateResult ([], Nothing)
+instance Functor ParseResult where
+    fmap f (ParseSuccess v) = ParseSuccess $ f v
+    fmap _ (ParseError   e) = ParseError e
 
-instance Functor GenerateResult where
-    fmap f (GenerateResult (errs, v)) = GenerateResult (errs, fmap f v)
+instance Applicative ParseResult where
+    pure = ParseSuccess
+    (ParseSuccess f) <*> (ParseSuccess v) = ParseSuccess (f v)
+    _                <*> (ParseError   e) = ParseError e
+    (ParseError e)   <*> _                = ParseError e
 
-instance Applicative GenerateResult where
-    pure x = GenerateResult ([], Just x)
-    (GenerateResult (errs, f)) <*> (GenerateResult (errs', vals')) =
-        GenerateResult (errs <> errs', f <*> vals')
-
-instance Monad GenerateResult where
-    return x = GenerateResult ([], Just x)
-    (GenerateResult (errs, Just vals)) >>= f =
-        let GenerateResult (errs', vals') = f vals
-        in  GenerateResult (errs <> errs', vals')
-    (GenerateResult (errs, Nothing)) >>= _ = GenerateResult (errs, Nothing)
+instance Monad ParseResult where
+    return = pure
+    ParseSuccess a >>= f = f a
+    ParseError   e >>= _ = ParseError e
 
 
-generateError :: GenerateError -> GenerateResult a
-generateError e = GenerateResult ([e], Nothing)
+class Config b v where
+    parser :: b -> ParseResult v
+    unparser :: v -> b
 
-generateSuccess :: a -> GenerateResult a
-generateSuccess v = GenerateResult ([], Just v)
+instance (Config a b) => Config (S.Value a) (S.Value b) where
+    parser v = parser (S.value v) >>= \v' -> pure $ v { S.value = v' }
+    unparser v = v { S.value = unparser $ S.value v }
 
-generateEither :: Either GenerateError a -> GenerateResult a
-generateEither (Left  err) = generateError err
-generateEither (Right v  ) = generateSuccess v
+class ToList m where
+    toList :: m a -> [a]
 
-class (Semigroup a) => Config a where
-    parser :: P.Parser a
-    printer :: a -> T.Text
-    gen :: Path -> FieldsTree -> GenerateResult a
-    gen p (FieldsTree (Just values) m) | Map.null m =
-        mconcat $ map (generateEither . mapLeft (ParseError p) . P.parse parser) values
-    gen p _ = generateError $ UnknownPath p
+instance ToList [] where
+    toList = id
+
+instance ToList Maybe where
+    toList Nothing  = []
+    toList (Just v) = [v]
+
+instance (Config v v', Monoid v, Monoid (m (S.Value v')), Applicative m, ToList m) => Config [S.Value v] (m (S.Value v')) where
+    parser [] = pure mempty
+    parser vs = fmap pure $ parser $ mconcat vs
+
+    unparser mv = toList $ fmap (fmap unparser) mv
+
+
+parseText :: P.Parser v -> T.Text -> ParseResult v
+parseText p = asParseResult . P.parse p
+  where
+    asParseResult (Left  e) = ParseError (Unparseable e)
+    asParseResult (Right v) = ParseSuccess v
+
+
+parseBool :: T.Text -> ParseResult Bool
+parseBool = parseText
+    (P.choice
+        [ P.choice ["true", "yes", "on", "1"] $> True
+        , P.choice ["false", "no", "off", "0"] $> False
+        ]
+    )
+
+unparseBool :: Bool -> T.Text
+unparseBool True  = "true"
+unparseBool False = "false"
+
+parseMultiple
+    :: (T.Text -> ParseResult v)
+    -> T.Text
+    -> S.Section
+    -> ParseResult [S.Value v]
+parseMultiple p field sec =
+    sequenceA $ liftValue . fmap p <$> S.getValue sec field
+  where
+    liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
+    liftValue v = case S.value v of
+        ParseSuccess v' -> ParseSuccess (v { S.value = v' })
+        ParseError   e  -> ParseError e
+
+parseOne
+    :: (T.Text -> ParseResult v)
+    -> T.Text
+    -> S.Section
+    -> ParseResult (S.Value v)
+parseOne p field sec = parseMultiple p field sec >>= asResult
+  where
+    asResult l = case l of
+        []  -> ParseError (FieldNotFound field)
+        [x] -> ParseSuccess x
+        _   -> ParseError (MultipleFound field)
+
+parseOneOptional
+    :: (Monoid (m (S.Value v)), Applicative m)
+    => (T.Text -> ParseResult v)
+    -> T.Text
+    -> S.Section
+    -> ParseResult (m (S.Value v))
+parseOneOptional p field sec = asMaybe <$> parseMultiple p field sec
+  where
+    asMaybe l = case l of
+        [x] -> pure x
+        _   -> mempty
 
 
 data FieldsTree = FieldsTree (Maybe [T.Text]) (Map T.Text [FieldsTree])
@@ -145,17 +222,6 @@ pathValue = do
     v <- P.words
     return (p, v)
 
-generate :: (Config a) => FieldsTree -> ([GenerateError], Maybe a)
-generate = unGenerateResult . gen (Path [])
-
-data GenerateError = UnknownPath Path | ParseError Path T.Text
-    deriving(Eq)
-
-instance Show GenerateError where
-    show (UnknownPath p) = "Unknown path '" <> show p <> "'"
-    show (ParseError p err) =
-        "Could not parse path '" <> show p <> "': " <> T.unpack err
-
 
 -- |Path is a location in a 'Config'.
 newtype Path = Path [T.Text]
@@ -164,8 +230,8 @@ newtype Path = Path [T.Text]
 instance Show Path where
     show (Path p) = T.unpack $ T.intercalate "." p
 
-(</>) :: Path -> T.Text -> Path
-(Path p) </> p' = Path (p ++ [p'])
+-- (</>) :: Path -> T.Text -> Path
+-- (Path p) </> p' = Path (p ++ [p'])
 
 path :: P.Parser Path
 path = fmap (Path . T.splitOn ".") P.words

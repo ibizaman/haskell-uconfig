@@ -64,8 +64,15 @@ parseHeader = C.anyHeader
 
 
 parseSection :: P.Parser Section
-parseSection = newSection . Map.fromList . Maybe.catMaybes <$> P.many
-    ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
+parseSection =
+    newSection
+        .   Map.fromListWith (<>)
+        .   fmap (\(k, v) -> (k, [v]))
+        <$> parseValueOrIgnoreEmptyLine
+  where
+    parseValueOrIgnoreEmptyLine :: P.Parser [(T.Text, Value T.Text)]
+    parseValueOrIgnoreEmptyLine = Maybe.catMaybes <$> P.many
+        ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
 
 
 parseValue :: P.Parser (T.Text, Value T.Text)
@@ -79,6 +86,7 @@ parseValue = do
 
 parseComment :: P.Parser Comment
 parseComment = newComment <$> P.some (commentStart >> P.line)
+
 
 generate :: XDGDesktop -> T.Text
 generate xdg =
@@ -97,9 +105,12 @@ generate xdg =
     generateHeader h = "[" <> h <> "]"
 
     generateSection :: Section -> [T.Text]
-    generateSection s = Map.foldMapWithKey generateValue $ unSection s
+    generateSection s = Map.foldMapWithKey generateValues $ unSection s
 
-    generateValue :: T.Text -> Value -> [T.Text]
+    generateValues :: T.Text -> [Value T.Text] -> [T.Text]
+    generateValues k vs = mconcat $ fmap (generateValue k) vs
+
+    generateValue :: T.Text -> Value T.Text -> [T.Text]
     generateValue k v =
         let preComments'  = generateComment $ preComments v
             postComments' = generateComment $ postComments v

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-|
 Module      : Syntax
 Description : Helpers to create Parsers and Generators
@@ -25,11 +26,17 @@ module Syntax
     , (/**)
     , (<#)
     , (#>)
+
+    -- Query
+    , getMainSection
+    , getSection
+    , getValue
     )
 where
 
 
 import qualified Data.Map.Strict               as Map
+import qualified Data.Maybe                    as M
 import qualified Data.String
 import qualified Data.Text                     as T
 
@@ -80,11 +87,11 @@ instance Monoid Sections where
 
 
 newtype Section = Section {
-      unSection :: Map.Map T.Text Value
+      unSection :: Map.Map T.Text [Value T.Text]
     }
     deriving (Show, Eq)
 
-newSection :: Map.Map T.Text Value -> Section
+newSection :: Map.Map T.Text [Value T.Text] -> Section
 newSection = Section
 
 instance Semigroup Section where
@@ -93,29 +100,44 @@ instance Semigroup Section where
 instance Monoid Section where
     mempty = Section Map.empty
 
-(/**) :: Section -> (T.Text, Value) -> Section
-(Section s) /** (k, v) = Section $ Map.insert k v s
+(/**) :: Section -> (T.Text, [Value T.Text]) -> Section
+(Section s) /** (k, v) = Section $ Map.insertWith (<>) k v s
 
 
-data Value = Value
-    { value :: T.Text
+data Value v = Value
+    { value :: v
     , preComments :: Comment
     , postComments :: Comment
     }
     deriving (Show, Eq)
 
-newValue :: T.Text -> Value
+newValue :: v -> Value v
 newValue v =
     Value { value = v, preComments = Comment [], postComments = Comment [] }
 
-instance Data.String.IsString Value where
-    fromString s =
-        Value { value = T.pack s, preComments = mempty, postComments = mempty }
+instance Data.String.IsString v => Data.String.IsString (Value v) where
+    fromString s = Value { value        = Data.String.fromString s
+                         , preComments  = mempty
+                         , postComments = mempty
+                         }
 
-(<#) :: Value -> Comment -> Value
+instance Functor Value where
+    fmap f v = v { value = f (value v) }
+
+instance (Semigroup v) => Semigroup (Value v) where
+    Value { value = v1, preComments = preC1, postComments = postC1 } <> Value { value = v2, preComments = preC2, postComments = postC2 }
+        = Value { value        = v1 <> v2
+                , preComments  = preC1 <> preC2
+                , postComments = postC1 <> postC2
+                }
+
+instance (Monoid v) => Monoid (Value v) where
+    mempty = newValue mempty
+
+(<#) :: Value v -> Comment -> Value v
 v <# c = v { preComments = c }
 
-(#>) :: Value -> Comment -> Value
+(#>) :: Value v -> Comment -> Value v
 v #> c = v { postComments = c }
 
 
@@ -135,3 +157,14 @@ instance Monoid Comment where
 
 instance Data.String.IsString Comment where
     fromString s = Comment $ T.pack <$> lines s
+
+
+getMainSection :: XDGDesktop -> Section
+getMainSection = firstSection
+
+getSection :: XDGDesktop -> T.Text -> Section
+getSection x name =
+    M.fromMaybe mempty $ Map.lookup name $ unSections $ sections x
+
+getValue :: Section -> T.Text -> [Value T.Text]
+getValue s name = M.fromMaybe mempty $ Map.lookup name $ unSection s

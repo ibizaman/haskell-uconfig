@@ -8,7 +8,6 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
-import qualified Config                        as C
 import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
 import qualified Parser                        as P
@@ -18,17 +17,17 @@ import           Syntax.XDGDesktop
 
 
 parsesLeft :: Show b => String -> P.Parser b -> T.Text -> H.SpecWith ()
-parsesLeft name p str = H.it name $ C.parse p str `HPP.shouldSatisfy` U.isLeft
+parsesLeft name p str = H.it name $ P.parse p str `HPP.shouldSatisfy` U.isLeft
 
 parsesRight
     :: (Show a, Eq a) => String -> P.Parser a -> T.Text -> a -> H.SpecWith ()
 parsesRight name p str want =
-    H.it name $ C.parse p str `HPP.shouldBe` Right want
+    H.it name $ P.parse p str `HPP.shouldBe` Right want
 
 roundtrip :: T.Text -> H.SpecWith ()
 roundtrip str =
     H.it "roundtrip"
-        $              fmap generate (C.parse parser str)
+        $              fmap generate (P.parse parser str)
         `HPP.shouldBe` Right str
 
 
@@ -70,26 +69,28 @@ spec = do
 
     H.describe "parseSection" $ do
         parsesRight "one value" parseSection "a=b" $ newSection $ Map.fromList
-            [("a", "b")]
+            [("a", ["b"])]
         parsesRight "two values" parseSection "a=b\nc=d"
             $ newSection
-            $ Map.fromList [("a", "b"), ("c", "d")]
+            $ Map.fromList [("a", ["b"]), ("c", ["d"])]
         parsesRight "two values separated" parseSection "a=b\n\nc=d"
             $ newSection
-            $ Map.fromList [("a", "b"), ("c", "d")]
+            $ Map.fromList [("a", ["b"]), ("c", ["d"])]
         parsesRight "one value with comment" parseSection "#comment\na=b"
             $ newSection
-            $ Map.fromList [("a", "b" <# "comment")]
+            $ Map.fromList [("a", ["b" <# "comment"])]
         parsesRight "two values with comment"
                     parseSection
                     "#comment\na=b\n#comment2\nc=d"
             $ newSection
-            $ Map.fromList [("a", "b" <# "comment"), ("c", "d" <# "comment2")]
+            $ Map.fromList
+                  [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
         parsesRight "two values with comment separated"
                     parseSection
                     "#comment\na=b\n\n#comment2\nc=d"
             $ newSection
-            $ Map.fromList [("a", "b" <# "comment"), ("c", "d" <# "comment2")]
+            $ Map.fromList
+                  [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
 
     H.describe "parse" $ do
         parsesRight "parses empty" parser "" mempty
@@ -101,20 +102,20 @@ spec = do
             "parses first section"
             parser
             "a=b"
-            (mempty { firstSection = newSection $ Map.singleton "a" "b" })
+            (mempty { firstSection = newSection $ Map.singleton "a" ["b"] })
         parsesRight
             "parses first comment and section"
             parser
             "# my comment\na=b"
-            (mempty /* (Nothing, mempty /** ("a", "b" <# " my comment")))
+            (mempty /* (Nothing, mempty /** ("a", ["b" <# " my comment"])))
         parsesRight
             "parses multiple sections"
             parser
             "a=1\n[section1]\nb=2\n[section2]\nc=3"
             (  mempty
-            /* (Nothing        , mempty /** ("a", "1"))
-            /* (Just "section1", mempty /** ("b", "2"))
-            /* (Just "section2", mempty /** ("c", "3"))
+            /* (Nothing        , mempty /** ("a", ["1"]))
+            /* (Just "section1", mempty /** ("b", ["2"]))
+            /* (Just "section2", mempty /** ("c", ["3"]))
             )
 
     H.describe "roundtrip" $ do

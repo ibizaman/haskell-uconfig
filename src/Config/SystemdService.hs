@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
 {-|
@@ -36,19 +38,20 @@ module Config.SystemdService
     , TasksMax(..)
     , PrivateTmp(..)
     , Restart(..)
-    , genTargets
     )
 where
 
 
 import           Control.Applicative            ( (<|>) )
 import           Data.Functor                   ( ($>) )
-import qualified Data.Map.Strict               as Map
+import qualified Data.String
 import qualified Data.Text                     as T
-import           Data.String                    ( IsString )
 import qualified Parser                        as P
-import           Config                         ( (</>) )
 import qualified Config                        as C
+import qualified Syntax                        as S
+import           Syntax                         ( (/*)
+                                                , (/**)
+                                                )
 
 
 -- |Value that can be empty. It's Maybe with a different Semigroup
@@ -73,11 +76,9 @@ instance Applicative EmptyDefault where
     Value f <*> m  = fmap f m
     Empty   <*> _m = Empty
 
-instance (C.Config a) => C.Config (EmptyDefault a) where
-    parser = pure <$> C.parser
-
-    printer Empty     = ""
-    printer (Value a) = C.printer a
+instance C.ToList EmptyDefault where
+    toList Empty      = []
+    toList (Value v') = [v']
 
 
 -- |A Systemd Service record.
@@ -99,16 +100,29 @@ instance Monoid SystemdService where
     mempty =
         SystemdService { unit = mempty, install = mempty, service = mempty }
 
+instance C.Config S.XDGDesktop SystemdService where
+    parser xdg =
+        SystemdService
+            <$> C.parser (S.getSection xdg "Unit")
+            <*> C.parser (S.getSection xdg "Install")
+            <*> C.parser (S.getSection xdg "Service")
+
+    unparser s =
+        mempty
+            /* (Just "Unit"   , C.unparser (unit s))
+            /* (Just "Install", C.unparser (install s))
+            /* (Just "Service", C.unparser (service s))
+
 -- |A Systemd [Unit] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BUnit%5D%20Section%20Options
 data Unit = Unit
-  { description :: EmptyDefault Description
-  , documentation :: [Documentation]
-  , before :: [Target]
-  , after :: [Target]
-  , wants :: [Target]
-  , requires :: [Target]
-  , conflicts :: [Target]
+  { description :: EmptyDefault (S.Value Description)
+  , documentation :: [S.Value Documentation]
+  , before :: [S.Value Target]
+  , after :: [S.Value Target]
+  , wants :: [S.Value Target]
+  , requires :: [S.Value Target]
+  , conflicts :: [S.Value Target]
   }
   deriving(Eq, Show)
 
@@ -132,8 +146,32 @@ instance Monoid Unit where
                   , conflicts     = mempty
                   }
 
+instance C.Config S.Section Unit where
+    parser sec =
+        Unit
+            <$> (C.parseOneOptional C.parser "Description" sec)
+            <*> (C.parseMultiple C.parser "Documentation" sec)
+            <*> (C.parseMultiple C.parser "Before" sec)
+            <*> (C.parseMultiple C.parser "After" sec)
+            <*> (C.parseMultiple C.parser "Wants" sec)
+            <*> (C.parseMultiple C.parser "Requires" sec)
+            <*> (C.parseMultiple C.parser "Conflicts" sec)
+
+    unparser u =
+        mempty
+            /** ("Description"  , C.unparser $ description u)
+            /** ("Documentation", C.unparser $ documentation u)
+            /** ("Before"       , C.unparser $ before u)
+            /** ("After"        , C.unparser $ after u)
+            /** ("Wants"        , C.unparser $ wants u)
+            /** ("Requires"     , C.unparser $ requires u)
+            /** ("Conflicts"    , C.unparser $ conflicts u)
+
 newtype Description = Description T.Text
     deriving(Eq, Show)
+
+instance Data.String.IsString Description where
+    fromString = Description . T.pack
 
 instance Semigroup Description where
     Description a <> Description b = Description (a <> b)
@@ -141,14 +179,17 @@ instance Semigroup Description where
 instance Monoid Description where
     mempty = Description ""
 
-instance C.Config Description where
-    parser = Description <$> P.words
+instance C.Config T.Text Description where
+    parser = fmap Description . C.parseText P.words
 
-    printer (Description d) = d
+    unparser (Description d) = d
 
 
 newtype Documentation = Documentation T.Text
     deriving(Eq, Show)
+
+instance Data.String.IsString Documentation where
+    fromString = Documentation . T.pack
 
 instance Semigroup Documentation where
     Documentation a <> Documentation b = Documentation (a <> b)
@@ -156,39 +197,36 @@ instance Semigroup Documentation where
 instance Monoid Documentation where
     mempty = Documentation mempty
 
-instance C.Config Documentation where
-    parser = Documentation . C.plain <$> C.spaced (C.quoted P.word)
+instance C.Config T.Text Documentation where
+    parser = fmap Documentation
+        . C.parseText (C.plain <$> C.spaced (C.quoted P.word))
 
-    printer (Documentation d) = d
+    unparser (Documentation d) = d
 
 
 newtype Target = Target T.Text
     deriving(Eq, Show)
 
-parseTarget = P.some (Target . C.plain <$> C.spaced (C.quoted P.word))
+instance Data.String.IsString Target where
+    fromString = Target . T.pack
 
-genTargets p (C.FieldsTree (Just values) m) | Map.null m = mconcat $ map
-    (C.generateEither . C.mapLeft (C.ParseError p) . C.parse parseTarget)
-    values
-genTargets p _ = C.generateError $ C.UnknownPath p
+instance Semigroup Target where
+    Target a <> Target b = Target (a <> b)
 
---instance Semigroup Target where
---    Target a <> Target b = Target (a <> b)
+instance Monoid Target where
+    mempty = Target mempty
 
---instance Monoid Target where
---    mempty = Target mempty
+instance C.Config T.Text Target where
+    parser = fmap Target . C.parseText (C.plain <$> C.spaced (C.quoted P.word))
 
---instance C.Config Target where
---    parser = Target . C.plain <$> C.spaced (C.quoted P.word)
---
---    printer (Target t) = t
+    unparser (Target t) = t
 
 
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-  { wantedBy :: [Target]
-  , requiredBy :: [Target]
+  { wantedBy :: [S.Value Target]
+  , requiredBy :: [S.Value Target]
   }
   deriving(Eq, Show)
 
@@ -200,27 +238,38 @@ instance Semigroup Install where
 instance Monoid Install where
     mempty = Install { wantedBy = mempty, requiredBy = mempty }
 
+instance C.Config S.Section Install where
+    parser sec =
+        Install
+            <$> (C.parseMultiple C.parser "WantedBy" sec)
+            <*> (C.parseMultiple C.parser "RequiredBy" sec)
+
+    unparser u =
+        mempty
+            /** ("WantedBy"  , C.unparser $ wantedBy u)
+            /** ("RequiredBy", C.unparser $ requiredBy u)
+
 
 -- |A Systemd [Service] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#Options
 -- https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=N
 data Service = Service
-  { execCondition :: [Exec]
-  , execStartPre :: [Exec]
-  , execStartPost :: [Exec]
+  { execCondition :: [S.Value Exec]
+  , execStartPre :: [S.Value Exec]
+  , execStartPost :: [S.Value Exec]
   , type_ :: Type
-  , execReload :: EmptyDefault Exec
-  , execStop :: [Exec]
-  , execStopPost :: [Exec]
-  , remainAfterExit :: EmptyDefault RemainAfterExit
-  , user :: EmptyDefault User
-  , group :: EmptyDefault Group
-  , workingDirectory :: EmptyDefault WorkingDirectory
-  , standardOutput :: EmptyDefault Output
-  , standardError :: EmptyDefault Output
-  , tasksMax :: EmptyDefault TasksMax
-  , restart :: EmptyDefault Restart
-  , privateTmp :: EmptyDefault PrivateTmp
+  , execReload :: EmptyDefault (S.Value Exec)
+  , execStop :: [S.Value Exec]
+  , execStopPost :: [S.Value Exec]
+  , remainAfterExit :: EmptyDefault (S.Value RemainAfterExit)
+  , user :: EmptyDefault (S.Value User)
+  , group :: EmptyDefault (S.Value Group)
+  , workingDirectory :: EmptyDefault (S.Value WorkingDirectory)
+  , standardOutput :: EmptyDefault (S.Value Output)
+  , standardError :: EmptyDefault (S.Value Output)
+  , tasksMax :: EmptyDefault (S.Value TasksMax)
+  , restart :: EmptyDefault (S.Value Restart)
+  , privateTmp :: EmptyDefault (S.Value PrivateTmp)
   }
   deriving(Eq, Show)
 
@@ -263,18 +312,87 @@ instance Monoid Service where
                      , privateTmp       = mempty
                      }
 
+instance C.Config S.Section Service where
+    parser sec =
+        Service
+            <$> (C.parseMultiple C.parser "ExecCondition" sec)
+            <*> (C.parseMultiple C.parser "ExecStartPre" sec)
+            <*> (C.parseMultiple C.parser "ExecstartPost" sec)
+            <*> parseType sec
+            <*> (C.parseOneOptional C.parser "ExecReload" sec)
+            <*> (C.parseMultiple C.parser "ExecStop" sec)
+            <*> (C.parseMultiple C.parser "ExecStopPost" sec)
+            <*> (C.parseOneOptional C.parser "RemainAfterExit" sec)
+            <*> (C.parseOneOptional C.parser "User" sec)
+            <*> (C.parseOneOptional C.parser "Group" sec)
+            <*> (C.parseOneOptional C.parser "WorkingDirectory" sec)
+            <*> (C.parseOneOptional C.parser "StandardOutput" sec)
+            <*> (C.parseOneOptional C.parser "StandardError" sec)
+            <*> (C.parseOneOptional C.parser "TasksMax" sec)
+            <*> (C.parseOneOptional C.parser "Restart" sec)
+            <*> (C.parseOneOptional C.parser "PrivateTmp" sec)
+
+    unparser u =
+        let
+            t = case type_ u of
+                TNothing -> mempty
+                TSimple exec ->
+                    mempty
+                        /** ("Type"     , pure "simple")
+                        /** ("ExecStart", C.unparser $ Just exec)
+                TExec exec ->
+                    mempty
+                        /** ("Type"     , pure "exec")
+                        /** ("ExecStart", C.unparser $ Just exec)
+                TForking pidFile exec ->
+                    mempty
+                        /** ("Type"     , pure "forking")
+                        /** ("PIDFile"  , C.unparser pidFile)
+                        /** ("ExecStart", C.unparser $ Just exec)
+                TOneShot execs -> mempty /** ("ExecStart", C.unparser execs)
+                TDBus busName exec ->
+                    mempty
+                        /** ("Type"     , pure "dbus")
+                        /** ("BusName"  , C.unparser $ Just busName)
+                        /** ("ExecStart", C.unparser $ Just exec)
+                TNotify notifyAccess exec ->
+                    mempty
+                        /** ("Type"        , pure "notify")
+                        /** ("NotifyAccess", C.unparser $ Just notifyAccess)
+                        /** ("ExecStart"   , C.unparser $ Just exec)
+                TIdle exec ->
+                    mempty
+                        /** ("Type"     , pure "idle")
+                        /** ("ExecStart", C.unparser $ Just exec)
+        in  t
+                /** ("User"            , C.unparser $ user u)
+                /** ("Group"           , C.unparser $ group u)
+                /** ("WorkingDirectory", C.unparser $ workingDirectory u)
+                /** ("StandardOutput"  , C.unparser $ standardOutput u)
+                /** ("StandardError"   , C.unparser $ standardError u)
+                /** ("TasksMax"        , C.unparser $ tasksMax u)
+                /** ("Restart"         , C.unparser $ restart u)
+                /** ("PrivateTmp"      , C.unparser $ privateTmp u)
+                /** ("RemainAfterExit" , C.unparser $ remainAfterExit u)
+                /** ("ExecCondition"   , C.unparser $ execCondition u)
+                /** ("ExecStartPre"    , C.unparser $ execStartPre u)
+                /** ("ExecStartPost"   , C.unparser $ execStartPost u)
+                /** ("ExecReload="     , C.unparser $ execReload u)
+                /** ("ExecStop="       , C.unparser $ execStop u)
+                /** ("ExecStopPost="   , C.unparser $ execStopPost u)
+
 
 -- |A Systemd [Type] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=
 data Type
   = TNothing
-  | TSimple Exec
-  | TExec Exec
-  | TForking (EmptyDefault PIDFile) Exec
-  | TOneShot [Exec]
-  | TDBus BusName Exec
-  | TNotify NotifyAccess Exec
-  | TIdle Exec
+  | TSimple (S.Value Exec)
+  | TExec (S.Value Exec)
+  | TForking (EmptyDefault (S.Value PIDFile)) (S.Value Exec)
+  | TOneShot [S.Value Exec]
+  | TDBus (S.Value BusName) (S.Value Exec)
+  | TNotify (S.Value NotifyAccess) (S.Value Exec)
+  | TIdle (S.Value Exec)
   deriving(Eq, Show)
 
 instance Semigroup Type where
@@ -285,77 +403,30 @@ instance Semigroup Type where
 instance Monoid Type where
     mempty = TNothing
 
-
-data InternalService = InternalService
-  { iExecCondition :: [Exec]
-  , iExecStartPre :: [Exec]
-  , iExecStartPost :: [Exec]
-  , iType :: EmptyDefault T.Text
-  , iPIDFile :: EmptyDefault PIDFile
-  , iRemainAfterExit :: EmptyDefault RemainAfterExit
-  , iBusName :: EmptyDefault BusName
-  , iNotifyAccess :: EmptyDefault NotifyAccess
-  , iExecStart :: [Exec]
-  , iExecReload :: EmptyDefault Exec
-  , iExecStop :: [Exec]
-  , iExecStopPost :: [Exec]
-  , iUser :: EmptyDefault User
-  , iGroup :: EmptyDefault Group
-  , iWorkingDirectory :: EmptyDefault WorkingDirectory
-  , iStandardOutput :: EmptyDefault Output
-  , iStandardError :: EmptyDefault Output
-  , iTasksMax :: EmptyDefault TasksMax
-  , iRestart :: EmptyDefault Restart
-  , iPrivateTmp :: EmptyDefault PrivateTmp
-  }
-  deriving(Eq, Show)
-
-instance Semigroup InternalService where
-    a <> b = InternalService
-        { iExecCondition    = iExecCondition a <> iExecCondition b
-        , iExecStartPre     = iExecStartPre a <> iExecStartPre b
-        , iExecStartPost    = iExecStartPost a <> iExecStartPost b
-        , iType             = iType a <> iType b
-        , iPIDFile          = iPIDFile a <> iPIDFile b
-        , iRemainAfterExit  = iRemainAfterExit a <> iRemainAfterExit b
-        , iBusName          = iBusName a <> iBusName b
-        , iNotifyAccess     = iNotifyAccess a <> iNotifyAccess b
-        , iExecStart        = iExecStart a <> iExecStart b
-        , iExecReload       = iExecReload a <> iExecReload b
-        , iExecStop         = iExecStop a <> iExecStop b
-        , iExecStopPost     = iExecStopPost a <> iExecStopPost b
-        , iUser             = iUser a <> iUser b
-        , iGroup            = iGroup a <> iGroup b
-        , iWorkingDirectory = iWorkingDirectory a <> iWorkingDirectory b
-        , iStandardOutput   = iStandardOutput a <> iStandardOutput b
-        , iStandardError    = iStandardError a <> iStandardError b
-        , iTasksMax         = iTasksMax a <> iTasksMax b
-        , iRestart          = iRestart a <> iRestart b
-        , iPrivateTmp       = iPrivateTmp a <> iPrivateTmp b
-        }
-
-instance Monoid InternalService where
-    mempty = InternalService { iExecCondition    = mempty
-                             , iExecStartPre     = mempty
-                             , iExecStartPost    = mempty
-                             , iType             = mempty
-                             , iPIDFile          = mempty
-                             , iRemainAfterExit  = mempty
-                             , iBusName          = mempty
-                             , iNotifyAccess     = mempty
-                             , iExecStart        = mempty
-                             , iExecReload       = mempty
-                             , iExecStop         = mempty
-                             , iExecStopPost     = mempty
-                             , iUser             = mempty
-                             , iGroup            = mempty
-                             , iWorkingDirectory = mempty
-                             , iStandardOutput   = mempty
-                             , iStandardError    = mempty
-                             , iTasksMax         = mempty
-                             , iRestart          = mempty
-                             , iPrivateTmp       = mempty
-                             }
+parseType :: S.Section -> C.ParseResult Type
+parseType section =
+    fmap S.value <$> C.parseOneOptional pure "Type" section >>= \case
+        Nothing       -> TSimple <$> C.parseOne C.parser "ExecStart" section
+        Just "simple" -> TSimple <$> C.parseOne C.parser "ExecStart" section
+        Just "exec"   -> TExec <$> C.parseOne C.parser "ExecStart" section
+        Just "forking" ->
+            TForking
+                <$> C.parseOneOptional C.parser "PidFile" section
+                <*> C.parseOne C.parser "ExecStart" section
+        Just "oneshot" ->
+            TOneShot <$> C.parseMultiple C.parser "ExecStart" section
+        Just "dbus" ->
+            TDBus
+                <$> C.parseOne C.parser "BusName" section
+                <*> C.parseOne C.parser "ExecStart" section
+        Just "notify" ->
+            TNotify
+                <$> C.parseOne C.parser "NotifyAccess" section
+                <*> C.parseOne C.parser "ExecStart" section
+        Just "idle" -> TIdle <$> C.parseOne C.parser "ExecStart" section
+        Just other  -> C.ParseError $ C.UnsupportedValue
+            other
+            ["simple", "exec", "forking", "oneshot", "dbus", "notify", "idle"]
 
 
 -- |Common record for all Exec commands like ExecStart and ExecStop.
@@ -385,41 +456,70 @@ instance Monoid Exec where
                   , command                           = mempty
                   }
 
+instance Data.String.IsString Exec where
+    fromString s = mempty { command = T.pack s }
+
+instance C.Config T.Text Exec where
+    parser = C.parseText
+        (  P.build
+                [ P.char '@' $> (mempty { overrideName = True })
+                , P.char '-' $> (mempty { continueOnError = True })
+                , P.char ':'
+                    $> (mempty { noEnvironmentVariableSubstitution = True })
+                ]
+        <> ((\l -> mempty { command = l }) <$> P.line)
+        )
+
+    unparser Exec {..} =
+        (if overrideName then "@" else "")
+            <> (if continueOnError then "-" else "")
+            <> (if noEnvironmentVariableSubstitution then ":" else "")
+            <> command
+
 
 newtype User = User T.Text
   deriving(Eq, Show)
 
+instance Data.String.IsString User where
+    fromString = User . T.pack
+
 instance Semigroup User where
     _ <> b = b
 
-instance C.Config User where
-    parser = User <$> P.word
+instance C.Config T.Text User where
+    parser = pure . User
 
-    printer (User u) = u
+    unparser (User t) = t
 
 
 newtype Group = Group T.Text
   deriving(Eq, Show)
 
+instance Data.String.IsString Group where
+    fromString = Group . T.pack
+
 instance Semigroup Group where
     _ <> b = b
 
-instance C.Config Group where
-    parser = Group <$> P.word
+instance C.Config T.Text Group where
+    parser = pure . Group
 
-    printer (Group u) = u
+    unparser (Group t) = t
 
 
 newtype WorkingDirectory = WorkingDirectory T.Text
   deriving(Eq, Show)
 
+instance Data.String.IsString WorkingDirectory where
+    fromString = WorkingDirectory . T.pack
+
 instance Semigroup WorkingDirectory where
     _ <> b = b
 
-instance C.Config WorkingDirectory where
-    parser = WorkingDirectory <$> P.word
+instance C.Config T.Text WorkingDirectory where
+    parser = pure . WorkingDirectory
 
-    printer (WorkingDirectory u) = u
+    unparser (WorkingDirectory t) = t
 
 
 data Output = OJournal
@@ -428,27 +528,27 @@ data Output = OJournal
 instance Semigroup Output where
     _ <> b = b
 
-instance C.Config Output where
-    parser = P.choice [P.chunk "journal" $> OJournal]
+instance C.Config T.Text Output where
+    parser = C.parseText (P.choice [P.chunk "journal" $> OJournal])
 
-    printer OJournal = "journal"
+    unparser OJournal = "journal"
 
 
 data TasksMax = TasksMax Int | TasksMaxInfinity
     deriving(Eq, Show)
-
-instance C.Config TasksMax where
-    parser =
-        (TasksMax <$> P.number) <|> (P.chunk "infinity" $> TasksMaxInfinity)
-
-    printer (TasksMax i)     = T.pack $ show i
-    printer TasksMaxInfinity = "infinity"
 
 instance Semigroup TasksMax where
     _ <> b = b
 
 instance Monoid TasksMax where
     mempty = TasksMax 0
+
+instance C.Config T.Text TasksMax where
+    parser = C.parseText
+        ((TasksMax <$> P.number) <|> (P.chunk "infinity" $> TasksMaxInfinity))
+
+    unparser (TasksMax i)     = T.pack $ show i
+    unparser TasksMaxInfinity = "infinity"
 
 
 data Restart = RNo
@@ -463,24 +563,26 @@ data Restart = RNo
 instance Semigroup Restart where
     _ <> b = b
 
-instance C.Config Restart where
-    parser = P.choice
-        [ P.chunk "no" $> RNo
-        , P.chunk "always" $> RAlways
-        , P.chunk "on-success" $> ROnSuccess
-        , P.chunk "on-failure" $> ROnFailure
-        , P.chunk "on-abnormal" $> ROnAbnormal
-        , P.chunk "on-abort" $> ROnAbort
-        , P.chunk "on-watchdog" $> ROnWatchdog
-        ]
+instance C.Config T.Text Restart where
+    parser = C.parseText
+        (P.choice
+            [ P.chunk "no" $> RNo
+            , P.chunk "always" $> RAlways
+            , P.chunk "on-success" $> ROnSuccess
+            , P.chunk "on-failure" $> ROnFailure
+            , P.chunk "on-abnormal" $> ROnAbnormal
+            , P.chunk "on-abort" $> ROnAbort
+            , P.chunk "on-watchdog" $> ROnWatchdog
+            ]
+        )
 
-    printer RNo         = "no"
-    printer RAlways     = "always"
-    printer ROnSuccess  = "on-success"
-    printer ROnFailure  = "on-failure"
-    printer ROnAbnormal = "on-abnormal"
-    printer ROnAbort    = "on-abort"
-    printer ROnWatchdog = "on-watchdog"
+    unparser RNo         = "no"
+    unparser RAlways     = "always"
+    unparser ROnSuccess  = "on-success"
+    unparser ROnFailure  = "on-failure"
+    unparser ROnAbnormal = "on-abnormal"
+    unparser ROnAbort    = "on-abort"
+    unparser ROnWatchdog = "on-watchdog"
 
 
 -- |A convenience type to represent PIDFile=.
@@ -491,10 +593,10 @@ newtype PIDFile = PIDFile T.Text
 instance Semigroup PIDFile where
     _ <> b = b
 
-instance C.Config PIDFile where
-    parser = PIDFile <$> P.words
+instance C.Config T.Text PIDFile where
+    parser = pure . PIDFile
 
-    printer (PIDFile pid) = pid
+    unparser (PIDFile t) = t
 
 
 -- |A convenience type to represent RemainAfterExit=.
@@ -505,12 +607,10 @@ newtype RemainAfterExit = RemainAfterExit Bool
 instance Semigroup RemainAfterExit where
     _ <> b = b
 
-instance C.Config RemainAfterExit where
-    parser = RemainAfterExit
-        <$> P.choice [P.chunk "yes" $> True, P.chunk "no" $> False]
+instance C.Config T.Text RemainAfterExit where
+    parser = fmap RemainAfterExit <$> C.parseBool
 
-    printer (RemainAfterExit True ) = "yes"
-    printer (RemainAfterExit False) = "no"
+    unparser (RemainAfterExit b) = C.unparseBool b
 
 
 -- |A convenience type to represent BusName=.
@@ -521,10 +621,10 @@ newtype BusName = BusName T.Text
 instance Semigroup BusName where
     _ <> b = b
 
-instance C.Config BusName where
-    parser = BusName <$> P.words
+instance C.Config T.Text BusName where
+    parser = pure . BusName
 
-    printer (BusName bus) = bus
+    unparser (BusName t) = t
 
 
 -- |Represents a NotifyAccess=.
@@ -539,18 +639,18 @@ data NotifyAccess
 instance Semigroup NotifyAccess where
     _ <> b = b
 
-instance C.Config NotifyAccess where
-    parser = P.choice
+instance C.Config T.Text NotifyAccess where
+    parser = C.parseText $ P.choice
         [ P.chunk "none" $> NANone
         , P.chunk "main" $> NAMain
         , P.chunk "exec" $> NAExec
         , P.chunk "all" $> NAAll
         ]
 
-    printer NANone = "none"
-    printer NAMain = "main"
-    printer NAExec = "exec"
-    printer NAAll  = "all"
+    unparser NANone = "none"
+    unparser NAMain = "main"
+    unparser NAExec = "exec"
+    unparser NAAll  = "all"
 
 
 -- |A convenience type to represent PrivateTmp=.
@@ -561,453 +661,7 @@ newtype PrivateTmp = PrivateTmp Bool
 instance Semigroup PrivateTmp where
     _ <> b = b
 
-instance C.Config PrivateTmp where
-    parser = PrivateTmp
-        <$> P.choice [P.chunk "true" $> True, P.chunk "false" $> False]
+instance C.Config T.Text PrivateTmp where
+    parser = fmap PrivateTmp <$> C.parseBool
 
-    printer (PrivateTmp True ) = "true"
-    printer (PrivateTmp False) = "false"
-
-
-instance C.Config SystemdService where
-    parser = P.build
-        [ C.header "Unit" *> ((\u -> mempty { unit = u }) <$> C.parser)
-        , C.header "Install" *> ((\i -> mempty { install = i }) <$> C.parser)
-        , C.header "Service" *> ((\s -> mempty { service = s }) <$> C.parser)
-        ]
-    printer SystemdService {..} =
-        C.printer unit <..> C.printer install <..> C.printer service
-
-    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
-        case k of
-            "Unit" -> mconcat $ map
-                (fmap (\v' -> mempty { unit = v' }) . C.gen (path </> "Unit"))
-                v
-            "Install" -> mconcat $ map
-                ( fmap (\v' -> mempty { install = v' })
-                . C.gen (path </> "Install")
-                )
-                v
-            "Service" -> mconcat $ map
-                ( fmap (\v' -> mempty { service = v' })
-                . C.gen (path </> "Service")
-                )
-                v
-            other -> C.generateError $ C.UnknownPath (path </> other)
-    gen path _ = C.generateError $ C.UnknownPath path
-
-(<=>) :: C.Config c => T.Text -> c -> T.Text
-a <=> b = case C.printer b of
-    "" -> ""
-    t  -> a <> "=" <> t
-
-
-(<.>) :: (Eq t, IsString t, Semigroup t) => t -> t -> t
-"" <.> b  = b
-a  <.> "" = a
-a  <.> b  = a <> "\n" <> b
-
-
-(<..>) :: (Eq t, IsString t, Semigroup t) => t -> t -> t
-"" <..> b  = b
-a  <..> "" = a
-a  <..> b  = a <> "\n\n" <> b
-
-
-header :: (Eq t, IsString t, Semigroup t) => t -> t -> t
-header _ ""   = ""
-header h body = h <.> body
-
-
-instance C.Config Unit where
-    parser = P.build
-        [ (\d -> mempty { description = d })
-            <$> C.assignment "Description" C.parser
-        , (\d -> mempty { documentation = d })
-            <$> C.assignment "Documentation" (P.some C.parser)
-        , (\bs -> mempty { before = bs }) <$> C.assignment "Before" parseTarget
-        , (\as -> mempty { after = as }) <$> C.assignment "After" parseTarget
-        , (\ws -> mempty { wants = ws }) <$> C.assignment "Wants" parseTarget
-        , (\rs -> mempty { requires = rs })
-            <$> C.assignment "Requires" parseTarget
-        , (\cs -> mempty { conflicts = cs })
-            <$> C.assignment "Conflicts" parseTarget
-        , P.emptyLine $> mempty
-        ]
-
-    printer Unit {..} =
-        header "[Unit]"
-            $   (("Description=" <>) . C.printer) description
-            <.> (T.intercalate "\n" . fmap (("Documentation=" <>) . C.printer))
-                    documentation
-            <.> (T.intercalate "\n" . fmap (("Before=" <>) . (\(Target t) -> t))
-                )
-                    before
-            <.> (T.intercalate "\n" . fmap (("After=" <>) . (\(Target t) -> t)))
-                    after
-            <.> (T.intercalate "\n" . fmap (("Wants=" <>) . (\(Target t) -> t)))
-                    wants
-            <.> ( T.intercalate "\n"
-                . fmap (("Requires=" <>) . (\(Target t) -> t))
-                )
-                    requires
-            <.> ( T.intercalate "\n"
-                . fmap (("Conflicts=" <>) . (\(Target t) -> t))
-                )
-                    conflicts
-
-    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
-        case k of
-            "Description" -> mconcat $ map
-                ( fmap (\v' -> mempty { description = v' })
-                . C.gen (path </> "Description")
-                )
-                v
-            "Documentation" -> mconcat $ map
-                ( fmap (\v' -> mempty { documentation = pure v' })
-                . C.gen (path </> "Documentation")
-                )
-                v
-            "Before" -> mconcat $ map
-                ( fmap (\v' -> mempty { before = v' })
-                . genTargets (path </> "Before")
-                )
-                v
-            "After" -> mconcat $ map
-                ( fmap (\v' -> mempty { after = v' })
-                . genTargets (path </> "After")
-                )
-                v
-            "Wants" -> mconcat $ map
-                ( fmap (\v' -> mempty { wants = v' })
-                . genTargets (path </> "Wants")
-                )
-                v
-            "Requires" -> mconcat $ map
-                ( fmap (\v' -> mempty { requires = v' })
-                . genTargets (path </> "Requires")
-                )
-                v
-            "Conflicts" -> mconcat $ map
-                ( fmap (\v' -> mempty { conflicts = v' })
-                . genTargets (path </> "Conflicts")
-                )
-                v
-            other -> C.generateError $ C.UnknownPath (path </> other)
-    gen path _ = C.generateError $ C.UnknownPath path
-
-
-instance C.Config Install where
-    parser = P.build
-        [ (\wbs -> mempty { wantedBy = wbs })
-            <$> C.assignment "WantedBy" parseTarget
-        , (\rbs -> mempty { requiredBy = rbs })
-            <$> C.assignment "RequiredBy" parseTarget
-        , P.emptyLine $> mempty
-        ]
-    printer Install {..} =
-        header "[Install]"
-            $ (T.intercalate "\n" . fmap (("WantedBy=" <>) . (\(Target t) -> t))
-              )
-                  wantedBy
-            <.> ( T.intercalate "\n"
-                . fmap (("RequiredBy=" <>) . (\(Target t) -> t))
-                )
-                    requiredBy
-
-    gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
-        case k of
-            "WantedBy" -> mconcat $ map
-                ( fmap (\v' -> mempty { wantedBy = v' })
-                . genTargets (path </> "WantedBy")
-                )
-                v
-            "RequiredBy" -> mconcat $ map
-                ( fmap (\v' -> mempty { requiredBy = v' })
-                . genTargets (path </> "RequiredBy")
-                )
-                v
-            other -> C.generateError $ C.UnknownPath (path </> other)
-    gen path _ = C.generateError $ C.UnknownPath path
-
-
-instance C.Config Service where
-    parser = toService <$> parseInternalType >>= \case
-        Left  e -> fail $ T.unpack e
-        Right s -> return s
-      where
-        parseInternalType :: P.Parser InternalService
-        parseInternalType = P.build
-            [ (\e -> mempty { iExecCondition = pure e })
-                <$> C.assignment "ExecCondition" C.parser
-            , (\e -> mempty { iExecStartPre = pure e })
-                <$> C.assignment "ExecStartPre" C.parser
-            , (\e -> mempty { iExecStartPost = pure e })
-                <$> C.assignment "ExecStartPost" C.parser
-            , (\t -> mempty { iType = pure t }) <$> C.assignment "Type" P.word
-            , (\p -> mempty { iPIDFile = p })
-                <$> C.assignment "PIDFile" C.parser
-            , (\r -> mempty { iRemainAfterExit = r })
-                <$> C.assignment "RemainAfterExit" C.parser
-            , (\b -> mempty { iBusName = b })
-                <$> C.assignment "BusName" C.parser
-            , (\n -> mempty { iNotifyAccess = n })
-                <$> C.assignment "NotifyAccess" C.parser
-            , (\e -> mempty { iExecStart = pure e })
-                <$> C.assignment "ExecStart" C.parser
-            , (\e -> mempty { iExecReload = e })
-                <$> C.assignment "ExecReload" C.parser
-            , (\e -> mempty { iExecStop = pure e })
-                <$> C.assignment "ExecStop" C.parser
-            , (\e -> mempty { iExecStopPost = pure e })
-                <$> C.assignment "ExecStopPost" C.parser
-            , (\u -> mempty { iUser = u }) <$> C.assignment "User" C.parser
-            , (\g -> mempty { iGroup = g }) <$> C.assignment "Group" C.parser
-            , (\w -> mempty { iWorkingDirectory = w })
-                <$> C.assignment "WorkingDirectory" C.parser
-            , (\o -> mempty { iStandardOutput = o })
-                <$> C.assignment "StandardOutput" C.parser
-            , (\e -> mempty { iStandardError = e })
-                <$> C.assignment "StandardError" C.parser
-            , (\t -> mempty { iTasksMax = t })
-                <$> C.assignment "TasksMax" C.parser
-            , (\r -> mempty { iRestart = r })
-                <$> C.assignment "Restart" C.parser
-            , (\p -> mempty { iPrivateTmp = p })
-                <$> C.assignment "PrivateTmp" C.parser
-            , P.emptyLine $> mempty
-            ]
-
-    printer Service {..} =
-        header "[Service]"
-            $   (\case
-                    TNothing     -> ""
-                    TSimple exec -> "Type=simple" <.> "ExecStart" <=> exec
-                    TExec   exec -> "Type=exec" <.> "ExecStart" <=> exec
-                    TForking pidFile exec ->
-                        "Type=forking"
-                            <.> ("PIDFile" <=> pidFile)
-                            <.> ("ExecStart" <=> exec)
-                    TOneShot execs ->
-                        "Type=oneshot"
-                            <.> (T.intercalate "\n" . fmap ("ExecStart" <=>))
-                                    execs
-                    TDBus busName exec ->
-                        "Type=dbus"
-                            <.> "BusName"
-                            <=> busName
-                            <.> "ExecStart"
-                            <=> exec
-                    TNotify notifyAccess exec ->
-                        "Type=notify"
-                            <.> "NotifyAccess"
-                            <=> notifyAccess
-                            <.> "ExecStart"
-                            <=> exec
-                    TIdle exec -> "Type=idle" <.> "ExecStart" <=> exec
-                )
-                    type_
-            <.> ("User" <=> user)
-            <.> ("Group" <=> group)
-            <.> ("WorkingDirectory" <=> workingDirectory)
-            <.> ("StandardOutput" <=> standardOutput)
-            <.> ("StandardError" <=> standardError)
-            <.> ("TasksMax" <=> tasksMax)
-            <.> ("Restart" <=> restart)
-            <.> ("PrivateTmp" <=> privateTmp)
-            <.> ("RemainAfterExit" <=> remainAfterExit)
-            <.> (T.intercalate "\n" . fmap ("ExecCondition=" <=>)) execCondition
-            <.> (T.intercalate "\n" . fmap ("ExecStartPre=" <=>)) execStartPre
-            <.> (T.intercalate "\n" . fmap ("ExecStartPost=" <=>)) execStartPost
-            <.> ("ExecReload=" <=> execReload)
-            <.> (T.intercalate "\n" . fmap ("ExecStop=" <=>)) execStop
-            <.> (T.intercalate "\n" . fmap ("ExecStopPost=" <=>)) execStopPost
-
-    -- gen path (C.FieldsTree Nothing m) = flip Map.foldMapWithKey m $ \k v ->
-    --     case k of
-    --         "WantedBy" -> mconcat $ map
-    --             ( fmap (\v' -> mempty { wantedBy = v' })
-    --             . genTargets (path </> "WantedBy")
-    --             )
-    --             v
-    --         "RequiredBy" -> mconcat $ map
-    --             ( fmap (\v' -> mempty { requiredBy = v' })
-    --             . genTargets (path </> "RequiredBy")
-    --             )
-    --             v
-    --         other -> C.generateError $ C.UnknownPath (path </> other)
-    -- gen path _ = C.generateError $ C.UnknownPath path
-
-    -- mconcat $ map
-    --     (C.generateEither . C.mapLeft (C.ParseError p) . C.parse parseTarget)
-    --     values
-
-    gen path (C.FieldsTree Nothing m) =
-        parseInternal
-            >>= C.generateEither
-            .   C.mapLeft (C.ParseError path)
-            .   toService
-      where
-        genExecs p (C.FieldsTree (Just values) m') | Map.null m' = mconcat $ map
-            (C.generateEither . C.mapLeft (C.ParseError p) . C.parse
-                (P.some C.parser)
-            )
-            values
-        genExecs p _ = C.generateError $ C.UnknownPath p
-
-        genUser p (C.FieldsTree (Just values) m') | Map.null m' = mconcat $ map
-            (C.generateEither . C.mapLeft (C.ParseError p) . C.parse C.parser)
-            values
-        genUser p _ = C.generateError $ C.UnknownPath p
-
-        parseInternal = flip Map.foldMapWithKey m $ \k v -> case k of
-            "ExecCondition" -> mconcat $ map
-                ( fmap (\v' -> mempty { iExecCondition = v' })
-                . genExecs (path </> "ExecCondition")
-                )
-                v
-            --"ExecStartPre" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iExecStartPre = v })
-            --        $ C.parse (P.some C.parser) value
-            --"ExecStartPost" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iExecStartPost = v })
-            --        $ C.parse (P.some C.parser) value
-            --"Type" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iType = pure v })
-            --        $ C.parse P.word value
-            "ExecStart" -> mconcat $ map
-                ( fmap (\v' -> mempty { iExecStart = v' })
-                . genExecs (path </> "ExecStart")
-                )
-                v
-            --"PIDFile" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iPIDFile = v })
-            --        $ C.parse C.parser value
-            --"RemainAfterExit" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iRemainAfterExit = v })
-            --        $ C.parse C.parser value
-            --"BusName" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iBusName = v })
-            --        $ C.parse C.parser value
-            --"NotifyAccess" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iNotifyAccess = v })
-            --        $ C.parse C.parser value
-            --"ExecReload" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iExecReload = v })
-            --        $ C.parse C.parser value
-            --"ExecStop" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iExecStop = v })
-            --        $ C.parse (P.some C.parser) value
-            --"ExecStopPost" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iExecStopPost = v })
-            --        $ C.parse (P.some C.parser) value
-            "User" -> mconcat $ map
-                (fmap (\v' -> mempty { iUser = v' }) . genUser (path </> "User")
-                )
-                v
-            --"Group" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iGroup = v })
-            --        $ C.parse C.parser value
-            --"WorkingDirectory" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iWorkingDirectory = v })
-            --        $ C.parse C.parser value
-            --"StandardOutput" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iStandardOutput = v })
-            --        $ C.parse C.parser value
-            --"StandardError" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iStandardError = v })
-            --        $ C.parse C.parser value
-            --"TasksMax" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iTasksMax = v })
-            --        $ C.parse C.parser value
-            --"Restart" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iRestart = v })
-            --        $ C.parse C.parser value
-            --"PrivateTmp" ->
-            --    mapLeft (C.ParseError $ C.Path path)
-            --        $ mapRight (\v -> mempty { iPrivateTmp = v })
-            --        $ C.parse C.parser value
-            other -> C.generateError $ C.UnknownPath (path </> other)
-    gen path _ = C.generateError $ C.UnknownPath path
-
-typeFromInternalService :: InternalService -> Either T.Text Type
-typeFromInternalService InternalService {..} = case iType of
-    Empty          -> TSimple <$> last' "simple" iExecStart
-    Value "simple" -> TSimple <$> last' "simple" iExecStart
-    Value "exec"   -> TExec <$> last' "exec" iExecStart
-    Value "forking" ->
-        TForking <$> Right iPIDFile <*> last' "forking" iExecStart
-    Value "oneshot" -> TOneShot <$> Right iExecStart
-    Value "dbus" ->
-        TDBus <$> asEither "iBusName" iBusName <*> last' "dbus" iExecStart
-    Value "notify" ->
-        TNotify
-            <$> asEither "iNotifyAccess" iNotifyAccess
-            <*> last' "notify" iExecStart
-    Value "idle" -> TIdle <$> last' "idle" iExecStart
-    Value other  -> Left $ "Type with unknown value '" <> other <> "'"
-  where
-    last' :: (IsString e, Semigroup e) => e -> [a] -> Either e a
-    last' e [] =
-        Left $ "Expected 'ExecStart' assignment for Type='" <> e <> "'"
-    last' _ [x     ] = Right x
-    last' e (_ : xs) = last' e xs
-
-    asEither :: e -> EmptyDefault a -> Either e a
-    asEither e Empty     = Left e
-    asEither _ (Value a) = Right a
-
-
-toService :: InternalService -> Either T.Text Service
-toService i@InternalService {..} =
-    let s = mempty { execCondition    = iExecCondition
-                   , execStartPre     = iExecStartPre
-                   , execStartPost    = iExecStartPost
-                   , execReload       = iExecReload
-                   , execStop         = iExecStop
-                   , execStopPost     = iExecStopPost
-                   , remainAfterExit  = iRemainAfterExit
-                   , user             = iUser
-                   , group            = iGroup
-                   , workingDirectory = iWorkingDirectory
-                   , standardOutput   = iStandardOutput
-                   , standardError    = iStandardError
-                   , tasksMax         = iTasksMax
-                   , restart          = iRestart
-                   , privateTmp       = iPrivateTmp
-                   }
-    in  case typeFromInternalService i of
-            Left  e  -> Left e
-            Right t' -> Right s { type_ = t' }
-
-
-instance C.Config Exec where
-    parser =
-        P.build
-                [ P.char '@' $> (mempty { overrideName = True })
-                , P.char '-' $> (mempty { continueOnError = True })
-                , P.char ':'
-                    $> (mempty { noEnvironmentVariableSubstitution = True })
-                ]
-            <> ((\l -> mempty { command = l }) <$> P.line)
-    printer Exec {..} =
-        (if overrideName then "@" else "")
-            <> (if continueOnError then "-" else "")
-            <> (if noEnvironmentVariableSubstitution then ":" else "")
-            <> command
+    unparser (PrivateTmp b) = C.unparseBool b
