@@ -9,6 +9,10 @@ import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
 import           Config
+import           Syntax                         ( Value
+                                                , newValue
+                                                , (/**)
+                                                )
 import qualified Data.Map.Strict               as Map
 import qualified Parser                        as P
 import qualified Utils                         as U
@@ -202,6 +206,21 @@ spec = do
         H.it "found x<space>y"
             $ P.parse (fetchInSection (P.chunk "x y")) "\na b\n\nx y\n\n[s2]\n"
             `HPP.shouldBe` Right (Just "x y")
+    H.describe "parse multiple" $ do
+        H.it "parses nothing"
+            $              parseMultiple "w" mempty
+            `HPP.shouldBe` ParseSuccess ([] :: [Value Bool])
+        H.it "parses one"
+            $              parseMultiple "w" (mempty /** ("w", ["true"]))
+            `HPP.shouldBe` ParseSuccess (fmap newValue [True])
+        H.it "parses two"
+            $ parseMultiple "w" (mempty /** ("w", ["true", "false"]))
+            `HPP.shouldBe` ParseSuccess (fmap newValue [True, False])
+        H.it "parses with failures"
+            $ ((parseMultiple "w" (mempty /** ("w", ["true", "other", "false"]))
+               ) :: ParseResult [Value Bool]
+              )
+            `HPP.shouldBe` ParseError (Unparseable "other")
     H.describe "fieldsTree" $ do
         H.it "one" $ fieldsTree [(Path ["1"], "v1")] `H.shouldBe` FieldsTree
             Nothing

@@ -91,6 +91,11 @@ spec = do
             $ newSection
             $ Map.fromList
                   [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
+        parsesRight "three variables with same name"
+                    parseSection
+                    "a=1\na=2\na=3"
+            $ newSection
+            $ Map.fromList [("a", ["1", "2", "3"])]
 
     H.describe "parse" $ do
         parsesRight "parses empty" parser "" mempty

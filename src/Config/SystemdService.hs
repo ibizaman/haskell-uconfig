@@ -49,7 +49,6 @@ import           Data.Functor                   ( ($>) )
 import qualified Data.String
 import qualified Data.Text                     as T
 import           Data.Semigroup                 ( Semigroup(..)
-                                                , First(..)
                                                 , Last(..)
                                                 )
 import           GHC.Generics                   ( Generic )
@@ -117,11 +116,11 @@ instance C.Config S.XDGDesktop SystemdService where
 data Unit = Unit
   { description :: EmptyDefault (S.Value Description)
   , documentation :: [S.Value Documentation]
-  , before :: [S.Value Target]
-  , after :: [S.Value Target]
-  , wants :: [S.Value Target]
-  , requires :: [S.Value Target]
-  , conflicts :: [S.Value Target]
+  , before :: [S.Value [Target]]
+  , after :: [S.Value [Target]]
+  , wants :: [S.Value [Target]]
+  , requires :: [S.Value [Target]]
+  , conflicts :: [S.Value [Target]]
   }
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically Unit)
@@ -186,12 +185,17 @@ instance C.Config T.Text Target where
 
     unparser (Target t) = t
 
+instance C.Config T.Text [Target] where
+    parser   = sequenceA . fmap C.parser . T.words
+
+    unparser = T.unwords . fmap C.unparser
+
 
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-    { wantedBy :: [S.Value Target]
-    , requiredBy :: [S.Value Target]
+    { wantedBy :: [S.Value [Target]]
+    , requiredBy :: [S.Value [Target]]
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Install)

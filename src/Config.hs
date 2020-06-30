@@ -69,7 +69,10 @@ import           Data.Functor                   ( ($>) )
 import           Data.Map.Strict                ( Map )
 import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
-
+import           Data.Typeable                  ( Typeable
+                                                , Proxy(..)
+                                                , typeOf
+                                                )
 import qualified Parser                        as P
 import qualified Syntax                        as S
 
@@ -114,6 +117,10 @@ instance Config T.Text T.Text where
     parser   = ParseSuccess
     unparser = id
 
+instance Config T.Text Bool where
+    parser   = parseBool
+    unparser = unparseBool
+
 class ToList m where
     toList :: m a -> [a]
 
@@ -132,9 +139,9 @@ instance (Config v v', Monoid v, Monoid (m (S.Value v')), Applicative m, ToList 
 
 
 parseText :: P.Parser v -> T.Text -> ParseResult v
-parseText p = asParseResult . P.parse p
+parseText p t = asParseResult $ P.parse p t
   where
-    asParseResult (Left  e) = ParseError (Unparseable e)
+    asParseResult (Left  _) = ParseError (Unparseable t)
     asParseResult (Right v) = ParseSuccess v
 
 

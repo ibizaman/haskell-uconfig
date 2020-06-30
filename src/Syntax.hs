@@ -101,7 +101,7 @@ instance Monoid Section where
     mempty = Section Map.empty
 
 (/**) :: Section -> (T.Text, [Value T.Text]) -> Section
-(Section s) /** (k, v) = Section $ Map.insertWith (<>) k v s
+(Section s) /** (k, v) = Section $ Map.insertWith (flip (<>)) k v s
 
 
 data Value v = Value

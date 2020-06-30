@@ -86,7 +86,10 @@ spec = do
                                (mempty /** ("Before", ["one two"]) /** ("Before", ["three"]))
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Unit)
-                                   { before = ["one", "two", "three"]
+                                   { before = S.newValue
+                                                  <$> [ ["one", "two"]
+                                                      , ["three"]
+                                                      ]
                                    }
                                )
         H.it "with description"
@@ -106,7 +109,7 @@ spec = do
                                (mempty /** ("WantedBy", ["default.target"]))
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Install)
-                                   { wantedBy = ["default.target"]
+                                   { wantedBy = [S.newValue ["default.target"]]
                                    }
                                )
         H.it "wantedBy and requiredBy"
@@ -119,12 +122,14 @@ spec = do
                                )
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Install)
-                                   { wantedBy   = [ "default.target"
-                                                  , "1"
-                                                  , "2"
-                                                  , "3"
-                                                  ]
-                                   , requiredBy = ["other.target", "4"]
+                                   { wantedBy   = S.newValue
+                                                      <$> [ ["default.target"]
+                                                          , ["1", "2", "3"]
+                                                          ]
+                                   , requiredBy = S.newValue
+                                                      <$> [ ["other.target"]
+                                                          , ["4"]
+                                                          ]
                                    }
                                )
     H.describe "parse full service" $ do

@@ -66,7 +66,7 @@ parseHeader = C.anyHeader
 parseSection :: P.Parser Section
 parseSection =
     newSection
-        .   Map.fromListWith (<>)
+        .   Map.fromListWith (flip (<>))
         .   fmap (\(k, v) -> (k, [v]))
         <$> parseValueOrIgnoreEmptyLine
   where
