@@ -1,7 +1,6 @@
 # https://github.com/haskell/haskell-ide-engine/issues/1564#issuecomment-574760343
 cradle:
-  stack:
-    - path: ./test
-      component: "uconfig:test:uconfig-test"
-    - path: ./src
-      component: "uconfig:lib"
+    stack:
+
+dependencies:
+    - package.yaml
