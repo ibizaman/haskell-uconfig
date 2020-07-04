@@ -110,7 +110,7 @@ construct ts = ConstructResult $ mergeEither $ fmap parse ts
     parse = P.parse $ do
         key <- P.wordsSepBy (P.word' []) (P.chunk ".")
         op  <-
-            (P.chunk "=" >> P.eol >> return Erase)
+            P.try (P.chunk "=" >> P.eol >> return Erase)
             <|> (Replace <$> (P.chunk "=" >> P.line))
             <|> (Add <$> (P.chunk "+=" >> P.line))
             <|> (Remove <$> (P.chunk "-=" >> P.line))
