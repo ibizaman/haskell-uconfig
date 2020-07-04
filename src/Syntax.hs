@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-|
 Module      : Syntax
@@ -23,7 +24,9 @@ module Syntax
     , Comment(unComment)
     , newComment
     , (/*)
+    , (/*.)
     , (/**)
+    , (/**.)
     , (<#)
     , (#>)
 
@@ -35,10 +38,12 @@ module Syntax
 where
 
 
+import qualified Data.List                     as L
 import qualified Data.Map.Strict               as Map
 import qualified Data.Maybe                    as M
 import qualified Data.String
 import qualified Data.Text                     as T
+import qualified SyntaxModifier                as SM
 
 
 data XDGDesktop = XDGDesktop
@@ -69,6 +74,19 @@ x /* (Just k, s) = x
     { sections = let (Sections s') = sections x in Sections $ Map.insert k s s'
     }
 x /* (Nothing, s) = x { firstSection = s }
+
+(/*.)
+    :: XDGDesktop
+    -> (Maybe T.Text, Maybe Section -> Maybe Section)
+    -> XDGDesktop
+x /*. (Just k, f) = x
+    { sections = let (Sections s') = sections x in Sections $ Map.alter f k s'
+    }
+x /*. (Nothing, f) = x
+    { firstSection = case f (Just $ firstSection x) of
+                         Nothing -> mempty
+                         Just s' -> s'
+    }
 
 
 newtype Sections = Sections {
@@ -102,6 +120,12 @@ instance Monoid Section where
 
 (/**) :: Section -> (T.Text, [Value T.Text]) -> Section
 (Section s) /** (k, v) = Section $ Map.insertWith (flip (<>)) k v s
+
+(/**.)
+    :: Section
+    -> (T.Text, Maybe [Value T.Text] -> Maybe [Value T.Text])
+    -> Section
+(Section s) /**. (k, f) = Section $ Map.alter f k s
 
 
 data Value v = Value
@@ -168,3 +192,23 @@ getSection x name =
 
 getValue :: Section -> T.Text -> [Value T.Text]
 getValue s name = M.fromMaybe mempty $ Map.lookup name $ unSection s
+
+
+instance SM.Updatable T.Text (Maybe T.Text) XDGDesktop where
+    update key op xdg = case SM.keyPop key of
+        (Nothing, k) ->
+            (Nothing, xdg /*. (Nothing, updateSection k $ newValue <$> op))
+        (Just key', k1) -> case SM.keyPop key' of
+            (Nothing, k2) ->
+                (Nothing, xdg /*. (Just k1, updateSection k2 $ newValue <$> op))
+            _ -> (Just "triple nested keys or more is not supported", xdg)
+      where
+        updateSection _  (SM.Erase   ) _        = Nothing
+        updateSection k' (SM.Add    v) Nothing  = Just (mempty /** (k', [v]))
+        updateSection k' (SM.Add    v) (Just s) = Just (s /** (k', [v]))
+        updateSection _  (SM.Remove _) Nothing  = Nothing
+        updateSection k' (SM.Remove v) (Just s) =
+            Just (s /**. (k', fmap (L.filter (v /=))))
+        updateSection _ (SM.Replace _) Nothing = Nothing
+        updateSection k' (SM.Replace v) (Just s) =
+            Just (s /**. (k', \_ -> Just [v]))

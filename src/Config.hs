@@ -36,12 +36,6 @@ module Config
     , quoted
     , plain
 
-      -- FieldsTree related
-    , FieldsTree(..)
-    , fieldsTree
-    , path
-    , pathValue
-
       -- Flat config
     , Flat(..)
     , flat
@@ -51,7 +45,6 @@ module Config
     , sectioned
 
       -- Misc
-    , Path(..)
     , header
     , section
     , anySection
@@ -66,13 +59,7 @@ import           Prelude                 hiding ( Word
                                                 )
 
 import           Data.Functor                   ( ($>) )
-import           Data.Map.Strict                ( Map )
-import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
-import           Data.Typeable                  ( Typeable
-                                                , Proxy(..)
-                                                , typeOf
-                                                )
 import qualified Parser                        as P
 import qualified Syntax                        as S
 
@@ -187,60 +174,6 @@ parseOneOptional field sec = asMaybe <$> parseMultiple field sec
         _   -> mempty
 
 
-data FieldsTree = FieldsTree (Maybe [T.Text]) (Map T.Text [FieldsTree])
-  deriving (Eq, Show)
-
-instance Semigroup FieldsTree where
-    FieldsTree aValues aFields <> FieldsTree bValues bFields =
-        FieldsTree (aValues <> bValues) (Map.unionWith (<>) aFields bFields)
-
-instance Monoid FieldsTree where
-    mempty = FieldsTree Nothing Map.empty
-
-
-fieldsTree :: [(Path, T.Text)] -> FieldsTree
-fieldsTree = foldr upsert mempty
-  where
-    upsert :: (Path, T.Text) -> FieldsTree -> FieldsTree
-    upsert (Path [], newValue) (FieldsTree values fields) =
-        FieldsTree (Just [newValue] <> values) fields
-    upsert (Path (p : pathRest), newValue) (FieldsTree values fields) =
-        case Map.lookup p fields of
-            Just children -> FieldsTree values $ Map.insert
-                p
-                (map (upsert (Path pathRest, newValue)) children)
-                fields
-            Nothing -> FieldsTree
-                values
-                (Map.insert p [singleton (Path pathRest, newValue)] fields)
-
-    singleton :: (Path, T.Text) -> FieldsTree
-    singleton (Path [], value) = FieldsTree (Just [value]) Map.empty
-    singleton (Path (p : pathRest), value) =
-        FieldsTree Nothing (Map.singleton p [singleton (Path pathRest, value)])
-
-pathValue :: P.Parser (Path, T.Text)
-pathValue = do
-    p <- path
-    _ <- P.chunk "="
-    v <- P.words
-    return (p, v)
-
-
--- |Path is a location in a 'Config'.
-newtype Path = Path [T.Text]
-    deriving(Eq)
-
-instance Show Path where
-    show (Path p) = T.unpack $ T.intercalate "." p
-
--- (</>) :: Path -> T.Text -> Path
--- (Path p) </> p' = Path (p ++ [p'])
-
-path :: P.Parser Path
-path = fmap (Path . T.splitOn ".") P.words
-
-
 -- |Flat is a config consisting of only assignments.
 newtype Flat v = Flat [Assignment v]
   deriving (Show, Eq)
@@ -344,22 +277,18 @@ spaced p = do
 -- |Parses p possibly enclosed in quotes.
 quoted :: P.Parser a -> P.Parser (Quoted a)
 quoted p = P.choice
-    [ do
-        _      <- P.char '"'
-        open   <- P.space
-        middle <- p
-        close  <- P.space
-        _      <- P.char '"'
-        return $ DoubleQuoted open close middle
-    , do
-        _      <- P.char '\''
-        open   <- P.space
-        middle <- p
-        close  <- P.space
-        _      <- P.char '\''
-        return $ SingleQuoted open close middle
+    [ quotedSpace '"'  DoubleQuoted
+    , quotedSpace '\'' SingleQuoted
     , NotQuoted <$> p
     ]
+  where
+    quotedSpace c f = do
+        _      <- P.char c
+        open   <- P.space
+        middle <- p
+        close  <- P.space
+        _      <- P.char c
+        return $ f open close middle
 
 
 -- |Removes spaces and quotes.

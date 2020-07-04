@@ -14,6 +14,7 @@ module Parser
         -- Base parser
       Parser
     , parse
+    , parse'
     , MP.choice
     , MP.between
     , between'
@@ -31,11 +32,13 @@ module Parser
     , MP.notFollowedBy
     , build
     , MP.optional
+    , MP.fancyFailure
 
         -- Words
     , MP.chunk
     , MPC.char
     , word
+    , word'
     , words
     , wordsSepBy
     , number
@@ -56,8 +59,11 @@ import           Prelude                 hiding ( lines
                                                 )
 import           Control.Applicative            ( (<|>) )
 import qualified Control.Monad                 as CM
+import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
 import qualified Data.Void                     as Void
+import qualified Data.List.NonEmpty            as NL
+import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Text.Megaparsec               as MP
 import qualified Text.Megaparsec.Char          as MPC
 import qualified Text.Read                     as TR
@@ -73,6 +79,16 @@ parse
     -> Either T.Text a -- ^Returns the parsed value or an error string.
 parse parser input =
     mapLeft (T.pack . MP.errorBundlePretty) $ MP.parse parser "input" input
+
+-- |Parse an input given a parser with a custom parsing error.
+parse'
+    :: MP.ShowErrorComponent e
+    => MP.Parsec e T.Text a -- ^How to parse the input.
+    -> T.Text               -- ^The input to parse.
+    -> Either (NL.NonEmpty T.Text) a           -- ^Returns the parsed value or an error string.
+parse' parser input =
+    mapLeft (fmap (T.pack . MP.parseErrorTextPretty) . MP.bundleErrors)
+        $ MP.parse parser "input" input
 
 
 -- |Like 'MP.between' but also returns what the 'open' and 'close'
@@ -113,8 +129,7 @@ number = do
 
 -- |Parse all characters until a given "stop" character.
 until :: Parser b -> Parser T.Text
-until match =
-    fmap T.pack $ MP.someTill MP.anySingle $ (match *> return ()) <|> eol
+until match = fmap T.pack $ MP.someTill MP.anySingle $ (match $> ()) <|> eol
 
 
 -- |Matches one or more successive 'MPC.asciiChar'.
@@ -141,24 +156,32 @@ word = T.pack <$> MP.some
         )
     )
 
+-- |Matches one or more successive 'MPC.asciiChar'.
+word' :: [Char] -> Parser T.Text
+word' cs = T.pack <$> MP.some (MPC.alphaNumChar <|> MP.oneOf cs)
+
 
 -- |Matches one or more 'word' separated by one or more spaces.
 words :: Parser T.Text
-words = fmap mconcat $ wordsSepBy $ fmap T.pack $ MP.some $ MPC.char ' '
+words =
+    fmap (mconcat . NL.toList)
+        $ wordsSepBy word
+        $ fmap T.pack
+        $ MP.some
+        $ MPC.char ' '
 
 
 -- |Matches one or more 'word' separated by a given string.
-wordsSepBy :: Parser T.Text -> Parser [T.Text]
-wordsSepBy sep = do
-    first <- word
+wordsSepBy :: Parser T.Text -> Parser T.Text -> Parser (NL.NonEmpty T.Text)
+wordsSepBy word' sep = do
+    first <- word'
     rest  <- MP.many $ MP.try $ do
-        s <- sep
-        w <- word
-        return $ s <> w
-    return $ [first] <> rest
+        _ <- sep
+        word'
+    return $ first :| rest
 
 
--- |Parse a line ending with a newline '\n' or '\r'. Fails on empty
+-- |Parse a line ending with a newline '\n' or '\r'. Succeeds on empty
 -- line. Does not consume the newline.
 line :: Parser T.Text
 line = T.pack <$> MP.manyTill MP.anySingle eol
@@ -166,7 +189,7 @@ line = T.pack <$> MP.manyTill MP.anySingle eol
 -- |Parse a line including only ending with a newline '\n' or '\r'.
 -- Succeeds on empty line. Does not consume the newline.
 emptyLine :: Parser ()
-emptyLine = MP.manyTill MPC.spaceChar (CM.void MPC.eol) *> return ()
+emptyLine = MP.manyTill MPC.spaceChar (CM.void MPC.eol) $> ()
 
 -- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
 -- there is only the empty line.
