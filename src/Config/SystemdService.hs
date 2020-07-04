@@ -282,7 +282,7 @@ instance C.Config S.Section Service where
                 TNotify notifyAccess exec ->
                     mempty
                         /** ("Type"        , pure "notify")
-                        /** ("NotifyAccess", C.unparser $ Just notifyAccess)
+                        /** ("NotifyAccess", C.unparser notifyAccess)
                         /** ("ExecStart"   , C.unparser $ Just exec)
                 TIdle exec ->
                     mempty
@@ -315,7 +315,7 @@ data Type
     | TForking (EmptyDefault (S.Value PIDFile)) (S.Value Exec)
     | TOneShot [S.Value Exec]
     | TDBus (S.Value BusName) (S.Value Exec)
-    | TNotify (S.Value NotifyAccess) (S.Value Exec)
+    | TNotify (EmptyDefault (S.Value NotifyAccess)) (S.Value Exec)
     | TIdle (S.Value Exec)
     deriving (Eq, Show)
 
@@ -344,7 +344,7 @@ parseType section =
                 <*> C.parseOne "ExecStart" section
         Just "notify" ->
             TNotify
-                <$> C.parseOne "NotifyAccess" section
+                <$> C.parseOneOptional "NotifyAccess" section
                 <*> C.parseOne "ExecStart" section
         Just "idle" -> TIdle <$> C.parseOne "ExecStart" section
         Just other  -> C.ParseError $ C.UnsupportedValue
