@@ -8,6 +8,12 @@ module Args
     , Args.metavar
     , Args.helper
     , (Args.<**>)
+    , Args.strOption
+    , Args.flag
+    , Args.switch
+    , Args.long
+    , Args.short
+    , Args.help
 
       -- re-exports from Parser
     , CApp.some
