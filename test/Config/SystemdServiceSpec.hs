@@ -237,6 +237,28 @@ spec = do
                                                 $ TasksMaxInfinity
                                    }
                                }
+        H.it "with service and disabled tasksmax=infinity"
+            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+                  (  mempty
+                  /* ( Just "Service"
+                     , (   mempty
+                       /** ("TasksMax", [S.setEnabled False "infinity"])
+                       /** ( "ExecStart"
+                           , ["/usr/bin/darkhttpd . --port 6810"]
+                           )
+                       )
+                     )
+                  )
+            `HPP.shouldBe` C.ParseSuccess (mempty :: SystemdService)
+                               { service = mempty
+                                   { type_    = TSimple
+                                       "/usr/bin/darkhttpd . --port 6810"
+                                   , tasksMax = Value
+                                                $ S.setEnabled False
+                                                $ S.newValue
+                                                $ TasksMaxInfinity
+                                   }
+                               }
 --     H.describe "full-fledge services" $ do
 --         H.it "aria2 web service"
 --             $ C.parser [r|[Unit]

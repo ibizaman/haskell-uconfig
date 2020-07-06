@@ -35,6 +35,7 @@ import           Control.Applicative            ( (<$>)
 import qualified Data.Maybe                    as Maybe
 import qualified Data.Text                     as T
 import qualified Data.Map.Strict               as Map
+import           Text.Megaparsec.Debug
 
 import           Syntax
 import qualified Config                        as C
@@ -77,11 +78,33 @@ parseSection =
 
 parseValue :: P.Parser (T.Text, Value T.Text)
 parseValue = do
-    preComments'       <- Maybe.fromMaybe mempty <$> P.optional parseComment
-    C.Assignment key v <-
-        C.anyAssignment $ P.until $ P.lookAhead $ commentStart <|> P.eol
+    preComments' <- Maybe.fromMaybe mempty <$> P.optional
+        (newComment <$> P.manyTill
+            (commentStart >> P.line)
+            (P.lookAhead $ P.try
+                (   (disabledAssignment >> return ())
+                <|> (P.satisfy (/= '#') >> return ())
+                <|> P.eof
+                )
+            )
+        )
+    enabled <- Maybe.isNothing <$> P.optional (commentStart >> P.space)
+    C.Assignment key v <- assignment
     postComments' <- Maybe.fromMaybe mempty <$> P.optional parseComment
-    return (C.plain key, newValue (C.plain v) <# preComments' #> postComments')
+    return
+        ( C.plain key
+        , setEnabled enabled
+        $  newValue (C.plain v)
+        <# preComments'
+        #> postComments'
+        )
+
+  where
+    disabledAssignment =
+        P.space >> P.optional commentStart >> P.space >> C.anyAssignment P.line
+
+    assignment =
+        C.anyAssignment $ P.until $ P.lookAhead $ commentStart <|> P.eol
 
 
 parseComment :: P.Parser Comment

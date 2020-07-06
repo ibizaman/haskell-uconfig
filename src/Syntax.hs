@@ -21,6 +21,7 @@ module Syntax
     , unSection
     , Value(value, preComments, postComments)
     , newValue
+    , setEnabled
     , Comment(unComment)
     , newComment
     , (/*)
@@ -130,17 +131,22 @@ instance Monoid Section where
 
 data Value v = Value
     { value :: v
+    , enabled :: Bool
     , preComments :: Comment
     , postComments :: Comment
     }
     deriving (Show, Eq)
 
 newValue :: v -> Value v
-newValue v =
-    Value { value = v, preComments = Comment [], postComments = Comment [] }
+newValue v = Value { value        = v
+                   , enabled      = True
+                   , preComments  = Comment []
+                   , postComments = Comment []
+                   }
 
 instance Data.String.IsString v => Data.String.IsString (Value v) where
     fromString s = Value { value        = Data.String.fromString s
+                         , enabled      = True
                          , preComments  = mempty
                          , postComments = mempty
                          }
@@ -149,8 +155,9 @@ instance Functor Value where
     fmap f v = v { value = f (value v) }
 
 instance (Semigroup v) => Semigroup (Value v) where
-    Value { value = v1, preComments = preC1, postComments = postC1 } <> Value { value = v2, preComments = preC2, postComments = postC2 }
+    Value { value = v1, enabled = _, preComments = preC1, postComments = postC1 } <> Value { value = v2, enabled = enabled2, preComments = preC2, postComments = postC2 }
         = Value { value        = v1 <> v2
+                , enabled      = enabled2
                 , preComments  = preC1 <> preC2
                 , postComments = postC1 <> postC2
                 }
@@ -163,6 +170,9 @@ v <# c = v { preComments = c }
 
 (#>) :: Value v -> Comment -> Value v
 v #> c = v { postComments = c }
+
+setEnabled :: Bool -> Value v -> Value v
+setEnabled b v = v { enabled = b }
 
 
 newtype Comment = Comment {

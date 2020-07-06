@@ -24,6 +24,12 @@ parsesRight
 parsesRight name p str want =
     H.it name $ P.parse p str `HPP.shouldBe` Right want
 
+parsesRightMulti
+    :: (Show a, Eq a) => String -> P.Parser a -> [(T.Text, a)] -> H.SpecWith ()
+parsesRightMulti name p ps = sequence_ $ fmap
+    (\(str', want') -> parsesRight (name <> "\n" <> T.unpack str') p str' want')
+    ps
+
 roundtrip :: T.Text -> H.SpecWith ()
 roundtrip str =
     H.it "roundtrip"
@@ -47,7 +53,15 @@ spec = do
         parsesLeft "no equal"   parseValue "a b"
         parsesLeft "only value" parseValue "=b"
         parsesLeft "only key"   parseValue "a="
-        parsesRight "one value"   parseValue "a=b"       ("a", "b")
+        parsesRight "one value" parseValue "a=b" ("a", "b")
+        parsesRight "ME one value disabled"
+                    parseValue
+                    "#a=b"
+                    ("a", setEnabled False "b")
+        parsesRight "one value disabled with space"
+                    parseValue
+                    "# a=b"
+                    ("a", setEnabled False "b")
         parsesRight "with spaces" parseValue " a = b c " ("a", "b c ")
         parsesRight "one value with pre comment"
                     parseValue
@@ -73,18 +87,46 @@ spec = do
         parsesRight "two values" parseSection "a=b\nc=d"
             $ newSection
             $ Map.fromList [("a", ["b"]), ("c", ["d"])]
+        parsesRight "two values with one disabled" parseSection "a=b\n#c=d"
+            $ newSection
+            $ Map.fromList [("a", ["b"]), ("c", [setEnabled False "d"])]
         parsesRight "two values separated" parseSection "a=b\n\nc=d"
             $ newSection
             $ Map.fromList [("a", ["b"]), ("c", ["d"])]
         parsesRight "one value with comment" parseSection "#comment\na=b"
             $ newSection
             $ Map.fromList [("a", ["b" <# "comment"])]
-        parsesRight "two values with comment"
+        parsesRight "two values with one comment"
                     parseSection
-                    "#comment\na=b\n#comment2\nc=d"
+                    "#comment\na=b\nc=d"
             $ newSection
-            $ Map.fromList
+            $ Map.fromList [("a", ["b" <# "comment"]), ("c", ["d"])]
+        parsesRightMulti
+            "two values with comment and disabled"
+            parseSection
+            [ ( "#comment\n#a=b\nc=d"
+              , newSection $ Map.fromList
+                  [("a", [setEnabled False $ "b" <# "comment"]), ("c", ["d"])]
+              )
+            , ( "#comment\na=b\n#c=d"
+              , newSection $ Map.fromList
+                  [("a", ["b" <# "comment"]), ("c", [setEnabled False "d"])]
+              )
+            , ( "#a=b\n#comment\nc=d"
+              , newSection $ Map.fromList
+                  [("a", [setEnabled False "b"]), ("c", ["d" <# "comment"])]
+              )
+            , ( "#comment\na=b\n#comment2\nc=d"
+              , newSection $ Map.fromList
                   [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
+              )
+            , ( "#comment\n#a=b\n#comment2\nc=d"
+              , newSection $ Map.fromList
+                  [ ("a", [setEnabled False $ "b" <# "comment"])
+                  , ("c", ["d" <# "comment2"])
+                  ]
+              )
+            ]
         parsesRight "two values with comment separated"
                     parseSection
                     "#comment\na=b\n\n#comment2\nc=d"

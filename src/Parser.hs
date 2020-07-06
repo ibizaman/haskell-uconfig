@@ -24,6 +24,7 @@ module Parser
     , MP.some
     , MP.someTill
     , eol
+    , MP.eof
     , MP.lookAhead
     , MP.anySingle
     , MP.unexpected
