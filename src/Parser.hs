@@ -164,7 +164,7 @@ word' cs = T.pack <$> MP.some (MPC.alphaNumChar <|> MP.oneOf cs)
 -- |Matches one or more 'word' separated by one or more spaces.
 words :: Parser T.Text
 words =
-    fmap (mconcat . NL.toList)
+    fmap (T.intercalate " " . NL.toList)
         $ wordsSepBy word
         $ fmap T.pack
         $ MP.some
@@ -173,11 +173,11 @@ words =
 
 -- |Matches one or more 'word' separated by a given string.
 wordsSepBy :: Parser T.Text -> Parser T.Text -> Parser (NL.NonEmpty T.Text)
-wordsSepBy word' sep = do
-    first <- word'
+wordsSepBy w sep = do
+    first <- w
     rest  <- MP.many $ MP.try $ do
         _ <- sep
-        word'
+        w
     return $ first :| rest
 
 

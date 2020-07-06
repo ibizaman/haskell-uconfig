@@ -8,6 +8,7 @@ import           Prelude                 hiding ( lines
                                                 , words
                                                 )
 import           Data.Functor                   ( ($>) )
+import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
@@ -45,25 +46,26 @@ spec = do
             parse word "abc123=" `HPP.shouldBe` Right "abc123"
     H.describe "wordsSepBy" $ do
         H.it "parses one word" $ do
-            parse (wordsSepBy (chunk ".")) "abc" `HPP.shouldBe` Right ["abc"]
+            parse (wordsSepBy word (chunk ".")) "abc"
+                `HPP.shouldBe` Right ("abc" :| [])
         H.it "parses multiple words" $ do
-            parse (wordsSepBy (chunk ",")) "a,b,c"
-                `HPP.shouldBe` Right ["a", ",b", ",c"]
+            parse (wordsSepBy word (chunk ",")) "a,b,c"
+                `HPP.shouldBe` Right ("a" :| ["b", "c"])
     H.describe "words" $ do
         H.it "parses one word" $ do
             parse words "abc" `HPP.shouldBe` Right "abc"
         H.it "parses two words" $ do
             parse words "abc def" `HPP.shouldBe` Right "abc def"
         H.it "parses two spaced words" $ do
-            parse words "abc    def" `HPP.shouldBe` Right "abc    def"
+            parse words "abc    def" `HPP.shouldBe` Right "abc def"
         H.it "parses two spaced words with trailing space" $ do
-            parse words "abc    def  " `HPP.shouldBe` Right "abc    def"
+            parse words "abc    def  " `HPP.shouldBe` Right "abc def"
         H.it "parses multiple words" $ do
             parse words "ab cd ef" `HPP.shouldBe` Right "ab cd ef"
         H.it "parses multiple spaced words" $ do
-            parse words "ab  cd   ef" `HPP.shouldBe` Right "ab  cd   ef"
+            parse words "ab  cd   ef" `HPP.shouldBe` Right "ab cd ef"
         H.it "parses multiple spaced words with trailing space" $ do
-            parse words "ab   cd   ef  " `HPP.shouldBe` Right "ab   cd   ef"
+            parse words "ab   cd   ef  " `HPP.shouldBe` Right "ab cd ef"
     H.describe "newlineSeparated" $ do
         H.it "fails on empty input" $ do
             parse (newlineSeparated word) "" `HPP.shouldSatisfy` U.isLeft
