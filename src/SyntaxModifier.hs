@@ -41,6 +41,8 @@ data Op a
     | Remove a
     | Replace a
     | Erase
+    | Disable
+    | Enable
     deriving(Show, Eq, Functor)
 
 data Key = Key T.Text [T.Text]
@@ -105,6 +107,8 @@ construct ts = ConstructResult $ mergeEither $ fmap parse ts
             <|> (Replace <$> (P.chunk "=" >> P.line))
             <|> (Add <$> (P.chunk "+=" >> P.line))
             <|> (Remove <$> (P.chunk "-=" >> P.line))
+            <|> (P.chunk "#-" >> return Enable)
+            <|> (P.chunk "#+" >> return Disable)
 
         return $ SyntaxModifier [(newKey key, op)]
 

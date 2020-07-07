@@ -19,7 +19,7 @@ module Syntax
     , Section
     , newSection
     , unSection
-    , Value(value, preComments, postComments)
+    , Value(value, enabled, preComments, postComments)
     , newValue
     , setEnabled
     , Comment(unComment)
@@ -213,12 +213,13 @@ instance SM.Updatable T.Text (Maybe T.Text) XDGDesktop where
                 (Nothing, xdg /*. (Just k1, updateSection k2 $ newValue <$> op))
             _ -> (Just "triple nested keys or more is not supported", xdg)
       where
-        updateSection _  (SM.Erase   ) _        = Nothing
-        updateSection k' (SM.Add    v) Nothing  = Just (mempty /** (k', [v]))
-        updateSection k' (SM.Add    v) (Just s) = Just (s /** (k', [v]))
-        updateSection _  (SM.Remove _) Nothing  = Nothing
-        updateSection k' (SM.Remove v) (Just s) =
-            Just (s /**. (k', fmap (L.filter (v /=))))
-        updateSection _ (SM.Replace _) Nothing = Nothing
-        updateSection k' (SM.Replace v) (Just s) =
-            Just (s /**. (k', \_ -> Just [v]))
+        updateSection _  SM.Erase   _        = Nothing
+        updateSection k' (SM.Add v) Nothing  = Just (mempty /** (k', [v]))
+        updateSection k' (SM.Add v) (Just s) = Just (s /** (k', [v]))
+        updateSection k' (SM.Remove v) s =
+            (/**. (k', fmap (L.filter (v /=)))) <$> s
+        updateSection k' (SM.Replace v) s = (/**. (k', \_ -> Just [v])) <$> s
+        updateSection k' SM.Enable s =
+            (/**. (k', \v -> fmap (fmap (setEnabled True)) v)) <$> s
+        updateSection k' SM.Disable s =
+            (/**. (k', \v -> fmap (fmap (setEnabled False)) v)) <$> s

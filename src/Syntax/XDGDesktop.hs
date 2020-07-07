@@ -88,12 +88,12 @@ parseValue = do
                 )
             )
         )
-    enabled <- Maybe.isNothing <$> P.optional (commentStart >> P.space)
+    enabled' <- Maybe.isNothing <$> P.optional (commentStart >> P.space)
     C.Assignment key v <- assignment
     postComments' <- Maybe.fromMaybe mempty <$> P.optional parseComment
     return
         ( C.plain key
-        , setEnabled enabled
+        , setEnabled enabled'
         $  newValue (C.plain v)
         <# preComments'
         #> postComments'
@@ -135,9 +135,9 @@ generate xdg =
 
     generateValue :: T.Text -> Value T.Text -> [T.Text]
     generateValue k v =
-        let preComments'  = generateComment $ preComments v
+        let preComments' = generateComment $ preComments v
             postComments' = generateComment $ postComments v
-            assignment    = k <> "=" <> value v
+            assignment = (if enabled v then "" else "#") <> k <> "=" <> value v
         in  case postComments' of
                 []             -> preComments' <> [assignment]
                 (first : rest) -> preComments' <> [assignment <> first] <> rest
