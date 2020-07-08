@@ -301,9 +301,9 @@ instance C.Config S.Section Service where
                 /** ("ExecCondition"   , C.unparser $ execCondition u)
                 /** ("ExecStartPre"    , C.unparser $ execStartPre u)
                 /** ("ExecStartPost"   , C.unparser $ execStartPost u)
-                /** ("ExecReload="     , C.unparser $ execReload u)
-                /** ("ExecStop="       , C.unparser $ execStop u)
-                /** ("ExecStopPost="   , C.unparser $ execStopPost u)
+                /** ("ExecReload"      , C.unparser $ execReload u)
+                /** ("ExecStop"        , C.unparser $ execStop u)
+                /** ("ExecStopPost"    , C.unparser $ execStopPost u)
 
 
 -- |A Systemd [Type] record.

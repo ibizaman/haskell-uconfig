@@ -40,11 +40,11 @@ where
 
 
 import qualified Data.List                     as L
-import qualified Data.Map.Strict               as Map
 import qualified Data.Maybe                    as M
 import qualified Data.String
 import qualified Data.Text                     as T
 import qualified SyntaxModifier                as SM
+import qualified OrderedMap                    as OM
 
 
 data XDGDesktop = XDGDesktop
@@ -72,7 +72,7 @@ instance Monoid XDGDesktop where
 
 (/*) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
 x /* (Just k, s) = x
-    { sections = let (Sections s') = sections x in Sections $ Map.insert k s s'
+    { sections = let (Sections s') = sections x in Sections $ OM.insert k s s'
     }
 x /* (Nothing, s) = x { firstSection = s }
 
@@ -81,7 +81,7 @@ x /* (Nothing, s) = x { firstSection = s }
     -> (Maybe T.Text, Maybe Section -> Maybe Section)
     -> XDGDesktop
 x /*. (Just k, f) = x
-    { sections = let (Sections s') = sections x in Sections $ Map.alter f k s'
+    { sections = let (Sections s') = sections x in Sections $ OM.alter f k s'
     }
 x /*. (Nothing, f) = x
     { firstSection = case f (Just $ firstSection x) of
@@ -91,42 +91,43 @@ x /*. (Nothing, f) = x
 
 
 newtype Sections = Sections {
-      unSections :: Map.Map T.Text Section
+      unSections :: OM.OrderedMap T.Text Section
     }
     deriving (Show, Eq)
 
-newSections :: Map.Map T.Text Section -> Sections
-newSections = Sections
+newSections :: [(T.Text, Section)] -> Sections
+newSections = Sections . OM.fromList
 
 instance Semigroup Sections where
     Sections a <> Sections b = Sections $ a <> b
 
 instance Monoid Sections where
-    mempty = Sections Map.empty
+    mempty = Sections OM.empty
 
 
 newtype Section = Section {
-      unSection :: Map.Map T.Text [Value T.Text]
+      unSection :: OM.OrderedMap T.Text [Value T.Text]
     }
     deriving (Show, Eq)
 
-newSection :: Map.Map T.Text [Value T.Text] -> Section
+newSection :: OM.OrderedMap T.Text [Value T.Text] -> Section
 newSection = Section
 
 instance Semigroup Section where
     Section a <> Section b = Section $ a <> b
 
 instance Monoid Section where
-    mempty = Section Map.empty
+    mempty = Section OM.empty
+
 
 (/**) :: Section -> (T.Text, [Value T.Text]) -> Section
-(Section s) /** (k, v) = Section $ Map.insertWith (flip (<>)) k v s
+(Section s) /** (k, v) = Section $ OM.insertWith (flip (<>)) k v s
 
 (/**.)
     :: Section
     -> (T.Text, Maybe [Value T.Text] -> Maybe [Value T.Text])
     -> Section
-(Section s) /**. (k, f) = Section $ Map.alter f k s
+(Section s) /**. (k, f) = Section $ OM.alter f k s
 
 
 data Value v = Value
@@ -198,10 +199,10 @@ getMainSection = firstSection
 
 getSection :: XDGDesktop -> T.Text -> Section
 getSection x name =
-    M.fromMaybe mempty $ Map.lookup name $ unSections $ sections x
+    M.fromMaybe mempty $ OM.lookup name $ unSections $ sections x
 
 getValue :: Section -> T.Text -> [Value T.Text]
-getValue s name = M.fromMaybe mempty $ Map.lookup name $ unSection s
+getValue s name = M.fromMaybe mempty $ OM.lookup name $ unSection s
 
 
 instance SM.Updatable T.Text (Maybe T.Text) XDGDesktop where

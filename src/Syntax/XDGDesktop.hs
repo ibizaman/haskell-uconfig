@@ -25,6 +25,9 @@ module Syntax.XDGDesktop
 
     -- Generate
     , generate
+
+    -- Misc
+    , followOrderFrom
     )
 where
 
@@ -34,11 +37,10 @@ import           Control.Applicative            ( (<$>)
                                                 )
 import qualified Data.Maybe                    as Maybe
 import qualified Data.Text                     as T
-import qualified Data.Map.Strict               as Map
-import           Text.Megaparsec.Debug
 
 import           Syntax
 import qualified Config                        as C
+import qualified OrderedMap                    as OM
 import qualified Parser                        as P
 
 
@@ -56,8 +58,7 @@ parser =
 
 
 parseSections :: P.Parser Sections
-parseSections =
-    newSections . Map.fromList <$> P.some ((,) <$> parseHeader <*> parseSection)
+parseSections = newSections <$> P.some ((,) <$> parseHeader <*> parseSection)
 
 
 parseHeader :: P.Parser T.Text
@@ -65,15 +66,13 @@ parseHeader = C.anyHeader
 
 
 parseSection :: P.Parser Section
-parseSection =
-    newSection
-        .   Map.fromListWith (flip (<>))
-        .   fmap (\(k, v) -> (k, [v]))
-        <$> parseValueOrIgnoreEmptyLine
+parseSection = mergeKeys <$> parseValueOrIgnoreEmptyLine
   where
     parseValueOrIgnoreEmptyLine :: P.Parser [(T.Text, Value T.Text)]
     parseValueOrIgnoreEmptyLine = Maybe.catMaybes <$> P.many
         ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
+
+    mergeKeys = foldl (/**) mempty . fmap (\(k, v) -> (k, [v]))
 
 
 parseValue :: P.Parser (T.Text, Value T.Text)
@@ -111,14 +110,34 @@ parseComment :: P.Parser Comment
 parseComment = newComment <$> P.some (commentStart >> P.line)
 
 
+followOrderFrom :: XDGDesktop -> XDGDesktop -> XDGDesktop
+followOrderFrom xdg order = xdg
+    { sections = newSections
+                 $ OM.mapWithKeys (\k s -> [(k, sortSection k s)])
+                 $ (unSections $ sections xdg)
+                 `OM.followOrderFrom` (unSections $ sections order)
+    }
+  where
+    sortSection :: T.Text -> Section -> Section
+    sortSection k s =
+        newSection
+            $                    (unSection s)
+            `OM.followOrderFrom` (unSection $ getSection order k)
+
+
 generate :: XDGDesktop -> T.Text
 generate xdg =
     T.intercalate "\n"
         $  generateComment (firstComments xdg)
         <> generateSection (firstSection xdg)
-        <> Map.foldMapWithKey
-               (\h s -> [generateHeader h] <> generateSection s)
-               (unSections $ sections xdg)
+        <> mconcat
+               (interleave
+                   [""]
+                   (OM.mapWithKeys
+                       (\h s -> [[generateHeader h] <> generateSection s])
+                       (unSections $ sections xdg)
+                   )
+               )
         <> generateComment (trailingComments xdg)
   where
     generateComment :: Comment -> [T.Text]
@@ -128,7 +147,7 @@ generate xdg =
     generateHeader h = "[" <> h <> "]"
 
     generateSection :: Section -> [T.Text]
-    generateSection s = Map.foldMapWithKey generateValues $ unSection s
+    generateSection s = OM.mapWithKeys generateValues $ unSection s
 
     generateValues :: T.Text -> [Value T.Text] -> [T.Text]
     generateValues k vs = mconcat $ fmap (generateValue k) vs
@@ -141,3 +160,9 @@ generate xdg =
         in  case postComments' of
                 []             -> preComments' <> [assignment]
                 (first : rest) -> preComments' <> [assignment <> first] <> rest
+
+
+interleave :: a -> [a] -> [a]
+interleave _ []       = []
+interleave _ (a : []) = [a]
+interleave x (a : as) = a : x : interleave x as

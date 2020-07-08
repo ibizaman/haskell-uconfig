@@ -82,62 +82,68 @@ spec = do
             )
 
     H.describe "parseSection" $ do
-        parsesRight "one value" parseSection "a=b" $ newSection $ Map.fromList
-            [("a", ["b"])]
+        parsesRight "one value" parseSection "a=b" $ mempty /** ("a", ["b"])
         parsesRight "two values" parseSection "a=b\nc=d"
-            $ newSection
-            $ Map.fromList [("a", ["b"]), ("c", ["d"])]
+            $   mempty
+            /** ("a", ["b"])
+            /** ("c", ["d"])
         parsesRight "two values with one disabled" parseSection "a=b\n#c=d"
-            $ newSection
-            $ Map.fromList [("a", ["b"]), ("c", [setEnabled False "d"])]
+            $   mempty
+            /** ("a", ["b"])
+            /** ("c", [setEnabled False "d"])
         parsesRight "two values separated" parseSection "a=b\n\nc=d"
-            $ newSection
-            $ Map.fromList [("a", ["b"]), ("c", ["d"])]
+            $   mempty
+            /** ("a", ["b"])
+            /** ("c", ["d"])
         parsesRight "one value with comment" parseSection "#comment\na=b"
-            $ newSection
-            $ Map.fromList [("a", ["b" <# "comment"])]
+            $   mempty
+            /** ("a", ["b" <# "comment"])
         parsesRight "two values with one comment"
                     parseSection
                     "#comment\na=b\nc=d"
-            $ newSection
-            $ Map.fromList [("a", ["b" <# "comment"]), ("c", ["d"])]
+            $   mempty
+            /** ("a", ["b" <# "comment"])
+            /** ("c", ["d"])
         parsesRightMulti
             "two values with comment and disabled"
             parseSection
             [ ( "#comment\n#a=b\nc=d"
-              , newSection $ Map.fromList
-                  [("a", [setEnabled False $ "b" <# "comment"]), ("c", ["d"])]
+              , mempty
+              /** ("a", [setEnabled False $ "b" <# "comment"])
+              /** ("c", ["d"])
               )
             , ( "#comment\na=b\n#c=d"
-              , newSection $ Map.fromList
-                  [("a", ["b" <# "comment"]), ("c", [setEnabled False "d"])]
+              , mempty
+              /** ("a", ["b" <# "comment"])
+              /** ("c", [setEnabled False "d"])
               )
             , ( "#a=b\n#comment\nc=d"
-              , newSection $ Map.fromList
-                  [("a", [setEnabled False "b"]), ("c", ["d" <# "comment"])]
+              , mempty
+              /** ("a", [setEnabled False "b"])
+              /** ("c", ["d" <# "comment"])
               )
             , ( "#comment\na=b\n#comment2\nc=d"
-              , newSection $ Map.fromList
-                  [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
+              , mempty
+              /** ("a", ["b" <# "comment"])
+              /** ("c", ["d" <# "comment2"])
               )
             , ( "#comment\n#a=b\n#comment2\nc=d"
-              , newSection $ Map.fromList
-                  [ ("a", [setEnabled False $ "b" <# "comment"])
-                  , ("c", ["d" <# "comment2"])
-                  ]
+              , mempty
+              /** ("a", [setEnabled False $ "b" <# "comment"])
+              /** ("c", ["d" <# "comment2"])
               )
             ]
         parsesRight "two values with comment separated"
                     parseSection
                     "#comment\na=b\n\n#comment2\nc=d"
-            $ newSection
-            $ Map.fromList
-                  [("a", ["b" <# "comment"]), ("c", ["d" <# "comment2"])]
+            $   mempty
+            /** ("a", ["b" <# "comment"])
+            /** ("c", ["d" <# "comment2"])
         parsesRight "three variables with same name"
                     parseSection
                     "a=1\na=2\na=3"
-            $ newSection
-            $ Map.fromList [("a", ["1", "2", "3"])]
+            $   mempty
+            /** ("a", ["1", "2", "3"])
 
     H.describe "parse" $ do
         parsesRight "parses empty" parser "" mempty
@@ -145,11 +151,10 @@ spec = do
                     parser
                     "# my long\n# comment\n"
                     (mempty { firstComments = " my long\n comment" })
-        parsesRight
-            "parses first section"
-            parser
-            "a=b"
-            (mempty { firstSection = newSection $ Map.singleton "a" ["b"] })
+        parsesRight "parses first section"
+                    parser
+                    "a=b"
+                    (mempty { firstSection = mempty /** ("a", ["b"]) })
         parsesRight
             "parses first comment and section"
             parser
@@ -170,6 +175,7 @@ spec = do
         roundtrip "# comment\na=b"
         roundtrip "# comment\na=b\n[section1]"
         roundtrip "# comment\na=1\n[section1]\nb=2"
-        roundtrip "# comment\na=1\n[section1]\nb=2\n[section2]"
-        roundtrip "# comment\na=1\n[section1]\nb=2\n[section2]\nc=3"
-        roundtrip "# comment\na=1\n[section1]\n# comment2\nb=2\n[section2]\nc=3"
+        roundtrip "# comment\na=1\n[section1]\nb=2\n\n[section2]"
+        roundtrip "# comment\na=1\n[section1]\nb=2\n\n[section2]\nc=3"
+        roundtrip
+            "# comment\na=1\n[section1]\n# comment2\nb=2\n\n[section2]\nc=3"

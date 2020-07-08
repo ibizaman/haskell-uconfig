@@ -54,6 +54,7 @@ main = arguments >>= \case
                                     $ T.unpack
                                     $ XDGDesktop.generate
                                     $ C.unparser parsed'
+                                    `XDGDesktop.followOrderFrom` parsed
                     (Just err, _) -> do
                         putStrLn "An error was encountered while updating:"
                         putStrLn . T.unpack $ err
