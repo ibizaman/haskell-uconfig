@@ -21,6 +21,11 @@ https://www.freedesktop.org/software/systemd/man/systemd.service.html
 -}
 module Config.SystemdService
     ( EmptyDefault(..)
+    , SBool(svalue, stype)
+    , sFalse
+    , sTrue
+    , setValue
+    , setType
     , SystemdService(..)
     , Unit(..)
     , Description(..)
@@ -84,9 +89,66 @@ instance Applicative EmptyDefault where
     Value f <*> m  = fmap f m
     Empty   <*> _m = Empty
 
-instance C.ToList EmptyDefault where
-    toList Empty      = []
-    toList (Value v') = [v']
+
+-- |Type of a Systemd boolean value
+data SBoolType
+    = BYes  -- ^boolean is either 'yes' or 'no'.
+    | BNum  -- ^boolean is either '1' or '0'.
+    | BTrue -- ^boolean is either 'true' or 'false'.
+    | BOn   -- ^boolean is either 'on' or 'off'.
+    deriving(Show, Eq)
+
+-- |A boolean that also knows in what style it was written.
+data SBool = SBool
+    { svalue :: Bool
+    , stype :: SBoolType
+    }
+    deriving(Show, Eq)
+
+sFalse :: SBool
+sFalse = SBool False BTrue
+
+sTrue :: SBool
+sTrue = SBool False BTrue
+
+instance Semigroup SBool where
+    a <> b = b { svalue = svalue a || svalue b }
+
+instance Monoid SBool where
+    mempty = SBool False BTrue
+
+setType :: SBoolType -> SBool -> SBool
+setType t b = b { stype = t }
+
+setValue :: Bool -> SBool -> SBool
+setValue v b = b { svalue = v }
+
+instance C.Config T.Text SBool where
+    parser = C.parseText
+        (P.choice
+            [ P.build
+                [ "true" $> SBool True BTrue
+                , "yes" $> SBool True BYes
+                , "on" $> SBool True BOn
+                , "1" $> SBool True BNum
+                ]
+            , P.build
+                [ "false" $> SBool False BTrue
+                , "no" $> SBool False BYes
+                , "off" $> SBool False BOn
+                , "0" $> SBool False BNum
+                ]
+            ]
+        )
+    unparser v = case (stype v, svalue v) of
+        (BTrue, True ) -> "true"
+        (BTrue, False) -> "false"
+        (BYes , True ) -> "yes"
+        (BYes , False) -> "no"
+        (BOn  , True ) -> "on"
+        (BOn  , False) -> "off"
+        (BNum , True ) -> "1"
+        (BNum , False) -> "0"
 
 
 -- |A Systemd Service record.
@@ -395,27 +457,27 @@ parseType section = case S.value <$> S.getValue section "Type" of
 -- |Common record for all Exec commands like ExecStart and ExecStop.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=
 data Exec = Exec
-    { overrideName :: Bool
-    , continueOnError :: Bool
-    , noEnvironmentVariableSubstitution :: Bool
+    { overrideName :: SBool
+    , continueOnError :: SBool
+    , noEnvironmentVariableSubstitution :: SBool
     , command :: T.Text
     }
     deriving (Eq, Show)
 
 instance Semigroup Exec where
     a <> b = Exec
-        { overrideName                      = overrideName a || overrideName b
-        , continueOnError = continueOnError a || continueOnError b
+        { overrideName                      = overrideName a <> overrideName b
+        , continueOnError = continueOnError a <> continueOnError b
         , noEnvironmentVariableSubstitution =
             noEnvironmentVariableSubstitution a
-                || noEnvironmentVariableSubstitution b
+                <> noEnvironmentVariableSubstitution b
         , command                           = command a <> command b
         }
 
 instance Monoid Exec where
-    mempty = Exec { overrideName                      = False
-                  , continueOnError                   = False
-                  , noEnvironmentVariableSubstitution = False
+    mempty = Exec { overrideName                      = mempty
+                  , continueOnError                   = mempty
+                  , noEnvironmentVariableSubstitution = mempty
                   , command                           = mempty
                   }
 
@@ -425,18 +487,18 @@ instance Data.String.IsString Exec where
 instance C.Config T.Text Exec where
     parser = C.parseText
         (  P.build
-                [ P.char '@' $> (mempty { overrideName = True })
-                , P.char '-' $> (mempty { continueOnError = True })
+                [ P.char '@' $> (mempty { overrideName = sTrue })
+                , P.char '-' $> (mempty { continueOnError = sTrue })
                 , P.char ':'
-                    $> (mempty { noEnvironmentVariableSubstitution = True })
+                    $> (mempty { noEnvironmentVariableSubstitution = sTrue })
                 ]
         <> ((\l -> mempty { command = l }) <$> P.line)
         )
 
     unparser Exec {..} =
-        (if overrideName then "@" else "")
-            <> (if continueOnError then "-" else "")
-            <> (if noEnvironmentVariableSubstitution then ":" else "")
+        (if svalue overrideName then "@" else "")
+            <> (if svalue continueOnError then "-" else "")
+            <> (if svalue noEnvironmentVariableSubstitution then ":" else "")
             <> command
 
 
@@ -554,7 +616,7 @@ instance C.Config T.Text PIDFile where
 
 -- |A convenience type to represent RemainAfterExit=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=
-newtype RemainAfterExit = RemainAfterExit Bool
+newtype RemainAfterExit = RemainAfterExit SBool
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically (Last RemainAfterExit))
 
@@ -605,7 +667,7 @@ instance C.Config T.Text NotifyAccess where
 
 -- |A convenience type to represent PrivateTmp=.
 -- https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=
-newtype PrivateTmp = PrivateTmp Bool
+newtype PrivateTmp = PrivateTmp SBool
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically (Last PrivateTmp))
 

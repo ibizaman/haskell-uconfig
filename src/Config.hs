@@ -19,7 +19,6 @@ module Config
     ( Config(..)
     , ParseResult(..)
     , ParseError(..)
-    , ToList(..)
     , setErrorField
 
       -- Config parsers
@@ -132,19 +131,6 @@ liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
 liftValue v = case S.value v of
     ParseSuccess v' -> ParseSuccess (v { S.value = v' })
     ParseError   e  -> ParseError e
-
-class ToList m where
-    toList :: m a -> [a]
-
-instance ToList [] where
-    toList = id
-
-instance ToList Maybe where
-    toList Nothing  = []
-    toList (Just v) = [v]
-
-instance ToList S.Value where
-    toList v = [S.value v]
 
 
 parseText :: P.Parser v -> T.Text -> ParseResult v

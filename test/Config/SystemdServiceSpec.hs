@@ -38,8 +38,8 @@ spec = do
             $              C.parser ("@-xy@-z" :: T.Text)
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Exec) { command         = "xy@-z"
-                                                 , overrideName    = True
-                                                 , continueOnError = True
+                                                 , overrideName    = sTrue
+                                                 , continueOnError = sTrue
                                                  }
                                )
     H.describe "parseService" $ do
