@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -125,16 +126,26 @@ data Unit = Unit
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically Unit)
 
+instance C.Config T.Text v => C.Config [S.Value T.Text] (EmptyDefault (S.Value v)) where
+    parser p = C.parser p >>= \case
+        []  -> C.ParseSuccess Empty
+        [x] -> C.ParseSuccess (Value x)
+        _   -> C.ParseError (C.MultipleFound "")
+
+    unparser = \case
+        Empty   -> []
+        Value x -> [fmap C.unparser x]
+
 instance C.Config S.Section Unit where
     parser sec =
         Unit
-            <$> (C.parseOneOptional "Description" sec)
-            <*> (C.parseMultiple "Documentation" sec)
-            <*> (C.parseMultiple "Before" sec)
-            <*> (C.parseMultiple "After" sec)
-            <*> (C.parseMultiple "Wants" sec)
-            <*> (C.parseMultiple "Requires" sec)
-            <*> (C.parseMultiple "Conflicts" sec)
+            <$> (C.parser (S.getValue sec "Description"))
+            <*> (C.parser (S.getValue sec "Documentation"))
+            <*> (C.parser (S.getValue sec "Before"))
+            <*> (C.parser (S.getValue sec "After"))
+            <*> (C.parser (S.getValue sec "Wants"))
+            <*> (C.parser (S.getValue sec "Requires"))
+            <*> (C.parser (S.getValue sec "Conflicts"))
 
     unparser u =
         mempty
@@ -203,8 +214,8 @@ data Install = Install
 instance C.Config S.Section Install where
     parser sec =
         Install
-            <$> (C.parseMultiple "WantedBy" sec)
-            <*> (C.parseMultiple "RequiredBy" sec)
+            <$> (C.parser (S.getValue sec "WantedBy"))
+            <*> (C.parser (S.getValue sec "RequiredBy"))
 
     unparser u =
         mempty
@@ -239,22 +250,22 @@ data Service = Service
 instance C.Config S.Section Service where
     parser sec =
         Service
-            <$> (C.parseMultiple "ExecCondition" sec)
-            <*> (C.parseMultiple "ExecStartPre" sec)
-            <*> (C.parseMultiple "ExecstartPost" sec)
+            <$> (C.parser (S.getValue sec "ExecCondition"))
+            <*> (C.parser (S.getValue sec "ExecStartPre"))
+            <*> (C.parser (S.getValue sec "ExecstartPost"))
             <*> parseType sec
-            <*> (C.parseOneOptional "ExecReload" sec)
-            <*> (C.parseMultiple "ExecStop" sec)
-            <*> (C.parseMultiple "ExecStopPost" sec)
-            <*> (C.parseOneOptional "RemainAfterExit" sec)
-            <*> (C.parseOneOptional "User" sec)
-            <*> (C.parseOneOptional "Group" sec)
-            <*> (C.parseOneOptional "WorkingDirectory" sec)
-            <*> (C.parseOneOptional "StandardOutput" sec)
-            <*> (C.parseOneOptional "StandardError" sec)
-            <*> (C.parseOneOptional "TasksMax" sec)
-            <*> (C.parseOneOptional "Restart" sec)
-            <*> (C.parseOneOptional "PrivateTmp" sec)
+            <*> (C.parser (S.getValue sec "ExecReload"))
+            <*> (C.parser (S.getValue sec "ExecStop"))
+            <*> (C.parser (S.getValue sec "ExecStopPost"))
+            <*> (C.parser (S.getValue sec "RemainAfterExit"))
+            <*> (C.parser (S.getValue sec "User"))
+            <*> (C.parser (S.getValue sec "Group"))
+            <*> (C.parser (S.getValue sec "WorkingDirectory"))
+            <*> (C.parser (S.getValue sec "StandardOutput"))
+            <*> (C.parser (S.getValue sec "StandardError"))
+            <*> (C.parser (S.getValue sec "TasksMax"))
+            <*> (C.parser (S.getValue sec "Restart"))
+            <*> (C.parser (S.getValue sec "PrivateTmp"))
 
     unparser u =
         let
@@ -263,31 +274,34 @@ instance C.Config S.Section Service where
                 TSimple exec ->
                     mempty
                         /** ("Type"     , pure "simple")
-                        /** ("ExecStart", C.unparser $ Just exec)
+                        /** ("ExecStart", C.unparser exec)
                 TExec exec ->
                     mempty
                         /** ("Type"     , pure "exec")
-                        /** ("ExecStart", C.unparser $ Just exec)
+                        /** ("ExecStart", C.unparser exec)
                 TForking pidFile exec ->
                     mempty
                         /** ("Type"     , pure "forking")
                         /** ("PIDFile"  , C.unparser pidFile)
-                        /** ("ExecStart", C.unparser $ Just exec)
-                TOneShot execs -> mempty /** ("ExecStart", C.unparser execs)
+                        /** ("ExecStart", C.unparser exec)
+                TOneShot execs ->
+                    mempty
+                        /** ("Type"     , pure "oneshot")
+                        /** ("ExecStart", C.unparser execs)
                 TDBus busName exec ->
                     mempty
                         /** ("Type"     , pure "dbus")
-                        /** ("BusName"  , C.unparser $ Just busName)
-                        /** ("ExecStart", C.unparser $ Just exec)
+                        /** ("BusName"  , C.unparser busName)
+                        /** ("ExecStart", C.unparser exec)
                 TNotify notifyAccess exec ->
                     mempty
                         /** ("Type"        , pure "notify")
                         /** ("NotifyAccess", C.unparser notifyAccess)
-                        /** ("ExecStart"   , C.unparser $ Just exec)
+                        /** ("ExecStart"   , C.unparser exec)
                 TIdle exec ->
                     mempty
                         /** ("Type"     , pure "idle")
-                        /** ("ExecStart", C.unparser $ Just exec)
+                        /** ("ExecStart", C.unparser exec)
         in  t
                 /** ("User"            , C.unparser $ user u)
                 /** ("Group"           , C.unparser $ group u)
@@ -328,28 +342,54 @@ instance Monoid Type where
     mempty = TNothing
 
 parseType :: S.Section -> C.ParseResult Type
-parseType section =
-    fmap S.value <$> C.parseOneOptional "Type" section >>= \case
-        Nothing       -> TSimple <$> C.parseOne "ExecStart" section
-        Just "simple" -> TSimple <$> C.parseOne "ExecStart" section
-        Just "exec"   -> TExec <$> C.parseOne "ExecStart" section
-        Just "forking" ->
-            TForking
-                <$> C.parseOneOptional "PidFile" section
-                <*> C.parseOne "ExecStart" section
-        Just "oneshot" -> TOneShot <$> C.parseMultiple "ExecStart" section
-        Just "dbus" ->
-            TDBus
-                <$> C.parseOne "BusName" section
-                <*> C.parseOne "ExecStart" section
-        Just "notify" ->
-            TNotify
-                <$> C.parseOneOptional "NotifyAccess" section
-                <*> C.parseOne "ExecStart" section
-        Just "idle" -> TIdle <$> C.parseOne "ExecStart" section
-        Just other  -> C.ParseError $ C.UnsupportedValue
-            other
-            ["simple", "exec", "forking", "oneshot", "dbus", "notify", "idle"]
+parseType section = case S.value <$> S.getValue section "Type" of
+    [] ->
+        TSimple
+            <$> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["simple"] ->
+        TSimple
+            <$> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["exec"] ->
+        TExec
+            <$> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["forking"] ->
+        TForking
+            <$> C.parser (S.getValue section "PidFile")
+            <*> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["oneshot"] ->
+        TOneShot
+            <$> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["dbus"] ->
+        TDBus
+            <$> C.parser (S.getValue section "BusName")
+            <*> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["notify"] ->
+        TNotify
+            <$> C.parser (S.getValue section "NotifyAccess")
+            <*> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    ["idle"] ->
+        TIdle
+            <$> ( C.setErrorField "ExecStart"
+                $ C.parser (S.getValue section "ExecStart")
+                )
+    [other] -> C.ParseError $ C.UnsupportedValue
+        other
+        ["simple", "exec", "forking", "oneshot", "dbus", "notify", "idle"]
+    _ -> C.ParseError $ C.MultipleFound "Type"
 
 
 -- |Common record for all Exec commands like ExecStart and ExecStop.
@@ -519,9 +559,9 @@ newtype RemainAfterExit = RemainAfterExit Bool
     deriving (Semigroup, Monoid) via (Generically (Last RemainAfterExit))
 
 instance C.Config T.Text RemainAfterExit where
-    parser = fmap RemainAfterExit <$> C.parseBool
+    parser = fmap RemainAfterExit <$> C.parser
 
-    unparser (RemainAfterExit b) = C.unparseBool b
+    unparser (RemainAfterExit b) = C.unparser b
 
 
 -- |A convenience type to represent BusName=.
@@ -570,6 +610,6 @@ newtype PrivateTmp = PrivateTmp Bool
     deriving (Semigroup, Monoid) via (Generically (Last PrivateTmp))
 
 instance C.Config T.Text PrivateTmp where
-    parser = fmap PrivateTmp <$> C.parseBool
+    parser = fmap PrivateTmp <$> C.parser
 
-    unparser (PrivateTmp b) = C.unparseBool b
+    unparser (PrivateTmp b) = C.unparser b

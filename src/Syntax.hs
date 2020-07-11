@@ -146,14 +146,14 @@ newValue v = Value { value        = v
                    }
 
 instance Data.String.IsString v => Data.String.IsString (Value v) where
-    fromString s = Value { value        = Data.String.fromString s
-                         , enabled      = True
-                         , preComments  = mempty
-                         , postComments = mempty
-                         }
+    fromString = newValue . Data.String.fromString
 
 instance Functor Value where
     fmap f v = v { value = f (value v) }
+
+instance Applicative Value where
+    pure = newValue
+    Value { value = f } <*> v = v { value = f (value v) }
 
 instance (Semigroup v) => Semigroup (Value v) where
     Value { value = v1, enabled = _, preComments = preC1, postComments = postC1 } <> Value { value = v2, enabled = enabled2, preComments = preC2, postComments = postC2 }

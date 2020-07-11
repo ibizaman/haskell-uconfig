@@ -1,5 +1,8 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-|
 Module      : Config
@@ -17,14 +20,10 @@ module Config
     , ParseResult(..)
     , ParseError(..)
     , ToList(..)
+    , setErrorField
 
       -- Config parsers
     , parseText
-    , parseBool
-    , unparseBool
-    , parseOne
-    , parseOneOptional
-    , parseMultiple
 
       -- Parsec parsers
     , Assignment(..)
@@ -66,7 +65,7 @@ import qualified Syntax                        as S
 
 data ParseResult v
       = ParseError ParseError
-      | ParseSuccess  v
+      | ParseSuccess v
     deriving(Show, Eq)
 
 data ParseError
@@ -75,6 +74,14 @@ data ParseError
       | MultipleFound T.Text
       | UnsupportedValue T.Text [T.Text]
     deriving(Show, Eq)
+
+instance Semigroup v => Semigroup (ParseResult v) where
+    (ParseSuccess a) <> (ParseSuccess b) = ParseSuccess $ a <> b
+    (ParseError   e) <> _                = ParseError e
+    _                <> (ParseError e)   = ParseError e
+
+instance Monoid v => Monoid (ParseResult v) where
+    mempty = ParseSuccess mempty
 
 instance Functor ParseResult where
     fmap f (ParseSuccess v) = ParseSuccess $ f v
@@ -91,14 +98,15 @@ instance Monad ParseResult where
     ParseSuccess a >>= f = f a
     ParseError   e >>= _ = ParseError e
 
+setErrorField :: T.Text -> ParseResult v -> ParseResult v
+setErrorField f (ParseError (FieldNotFound _)) = ParseError (FieldNotFound f)
+setErrorField f (ParseError (MultipleFound _)) = ParseError (MultipleFound f)
+setErrorField _ e                              = e
+
 
 class Config b v where
     parser :: b -> ParseResult v
     unparser :: v -> b
-
-instance (Config a b) => Config (S.Value a) (S.Value b) where
-    parser v = parser (S.value v) >>= \v' -> pure $ v { S.value = v' }
-    unparser v = v { S.value = unparser $ S.value v }
 
 instance Config T.Text T.Text where
     parser   = ParseSuccess
@@ -107,6 +115,23 @@ instance Config T.Text T.Text where
 instance Config T.Text Bool where
     parser   = parseBool
     unparser = unparseBool
+
+instance (Config T.Text v) => Config [S.Value T.Text] [S.Value v] where
+    parser   = traverse (liftValue . fmap parser)
+
+    unparser = fmap (fmap unparser)
+
+instance (Config T.Text v) => Config [S.Value T.Text] (S.Value v) where
+    parser = \case
+        []  -> ParseError (FieldNotFound "")
+        [x] -> liftValue $ fmap parser x
+        _   -> ParseError (MultipleFound "")
+    unparser v = [fmap unparser v]
+
+liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
+liftValue v = case S.value v of
+    ParseSuccess v' -> ParseSuccess (v { S.value = v' })
+    ParseError   e  -> ParseError e
 
 class ToList m where
     toList :: m a -> [a]
@@ -118,11 +143,8 @@ instance ToList Maybe where
     toList Nothing  = []
     toList (Just v) = [v]
 
-instance (Config v v', Monoid v, Monoid (m (S.Value v')), Applicative m, ToList m) => Config [S.Value v] (m (S.Value v')) where
-    parser [] = pure mempty
-    parser vs = fmap pure $ parser $ mconcat vs
-
-    unparser mv = toList $ fmap (fmap unparser) mv
+instance ToList S.Value where
+    toList v = [S.value v]
 
 
 parseText :: P.Parser v -> T.Text -> ParseResult v
@@ -143,35 +165,6 @@ parseBool = parseText
 unparseBool :: Bool -> T.Text
 unparseBool True  = "true"
 unparseBool False = "false"
-
-parseMultiple
-    :: (Config T.Text v) => T.Text -> S.Section -> ParseResult [S.Value v]
-parseMultiple field sec =
-    sequenceA $ liftValue . fmap parser <$> S.getValue sec field
-  where
-    liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
-    liftValue v = case S.value v of
-        ParseSuccess v' -> ParseSuccess (v { S.value = v' })
-        ParseError   e  -> ParseError e
-
-parseOne :: (Config T.Text v) => T.Text -> S.Section -> ParseResult (S.Value v)
-parseOne field sec = parseMultiple field sec >>= asResult
-  where
-    asResult l = case l of
-        []  -> ParseError (FieldNotFound field)
-        [x] -> ParseSuccess x
-        _   -> ParseError (MultipleFound field)
-
-parseOneOptional
-    :: (Config T.Text v, Monoid (m (S.Value v)), Applicative m)
-    => T.Text
-    -> S.Section
-    -> ParseResult (m (S.Value v))
-parseOneOptional field sec = asMaybe <$> parseMultiple field sec
-  where
-    asMaybe l = case l of
-        [x] -> pure x
-        _   -> mempty
 
 
 -- |Flat is a config consisting of only assignments.
