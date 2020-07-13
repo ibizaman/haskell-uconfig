@@ -29,7 +29,6 @@ import qualified Control.Applicative           as CApp
 import qualified Data.Text                     as T
 import qualified Options.Applicative           as Args
 import qualified Parser                        as P
-import           Utils                          ( mapLeft )
 
 
 subparser :: Foldable t => t (String, String, Args.Parser a) -> Args.Parser a
@@ -42,5 +41,4 @@ desc :: String -> Args.InfoMod a
 desc d = Args.fullDesc <> Args.progDesc d
 
 parsecArg :: P.Parser v -> Args.ReadM v
-parsecArg parser =
-    Args.eitherReader (mapLeft T.unpack . P.parse parser . T.pack)
+parsecArg parser = Args.eitherReader (P.parse parser . T.pack)

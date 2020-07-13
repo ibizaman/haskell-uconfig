@@ -77,9 +77,9 @@ type Parser = MP.Parsec Void.Void T.Text
 parse
     :: Parser a        -- ^How to parse the input.
     -> T.Text          -- ^The input to parse.
-    -> Either T.Text a -- ^Returns the parsed value or an error string.
+    -> Either String a -- ^Returns the parsed value or an error string.
 parse parser input =
-    mapLeft (T.pack . MP.errorBundlePretty) $ MP.parse parser "input" input
+    mapLeft MP.errorBundlePretty $ MP.parse parser "input" input
 
 -- |Parse an input given a parser with a custom parsing error.
 parse'

@@ -60,7 +60,7 @@ main = arguments >>= \case
                         putStrLn . T.unpack $ err
             errs -> do
                 putStrLn "Some UPDATEs could not be parsed:"
-                sequence_ $ putStrLn . T.unpack <$> errs
+                sequence_ $ putStrLn <$> errs
   where
     parseXDG :: T.Text -> (XDGDesktop.XDGDesktop -> IO ()) -> IO ()
     parseXDG file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->

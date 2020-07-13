@@ -88,10 +88,10 @@ instance Show ConstructError where
             <> "'"
     show (EmptyKey line) = T.unpack $ "Key cannot be empty in '" <> line <> "'"
 
-newtype ConstructResult = ConstructResult ([T.Text], SyntaxModifier T.Text)
+newtype ConstructResult = ConstructResult ([String], SyntaxModifier T.Text)
     deriving(Semigroup, Monoid)
 
-constructErrors :: ConstructResult -> [T.Text]
+constructErrors :: ConstructResult -> [String]
 constructErrors (ConstructResult (errs, _)) = errs
 
 constructResult :: ConstructResult -> SyntaxModifier T.Text
