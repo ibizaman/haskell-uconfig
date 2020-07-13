@@ -111,10 +111,6 @@ instance Config T.Text T.Text where
     parser   = ParseSuccess
     unparser = id
 
-instance Config T.Text Bool where
-    parser   = parseBool
-    unparser = unparseBool
-
 instance (Config T.Text v) => Config [S.Value T.Text] [S.Value v] where
     parser   = traverse (liftValue . fmap parser)
 
@@ -138,19 +134,6 @@ parseText p t = asParseResult $ P.parse p t
   where
     asParseResult (Left  _) = ParseError (Unparseable t)
     asParseResult (Right v) = ParseSuccess v
-
-
-parseBool :: T.Text -> ParseResult Bool
-parseBool = parseText
-    (P.choice
-        [ P.choice ["true", "yes", "on", "1"] $> True
-        , P.choice ["false", "no", "off", "0"] $> False
-        ]
-    )
-
-unparseBool :: Bool -> T.Text
-unparseBool True  = "true"
-unparseBool False = "false"
 
 
 -- |Flat is a config consisting of only assignments.
