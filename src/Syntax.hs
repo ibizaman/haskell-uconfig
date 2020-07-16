@@ -51,6 +51,7 @@ module Syntax
     -- * Comment
     , Comment(unComment)
     , newComment
+    , newComment1
     , (<#)
     , (#>)
 
@@ -195,8 +196,8 @@ data Value v = Value
 newValue :: v -> Value v
 newValue v = Value { value        = v
                    , enabled      = True
-                   , preComments  = Comment []
-                   , postComments = Comment []
+                   , preComments  = mempty
+                   , postComments = mempty
                    }
 
 instance Data.String.IsString v => Data.String.IsString (Value v) where
@@ -230,22 +231,28 @@ setEnabled :: Bool -> Value v -> Value v
 setEnabled b v = v { enabled = b }
 
 
-newtype Comment = Comment {
-      unComment ::  [T.Text]
+data Comment = Comment
+    { unComment :: [T.Text]
+    , commentPrefix :: T.Text
     }
     deriving (Show, Eq)
 
-newComment :: [T.Text] -> Comment
-newComment = Comment
+newComment :: T.Text -> [T.Text] -> Comment
+newComment p u = Comment u p
 
+newComment1 :: T.Text -> T.Text -> Comment
+newComment1 p u = Comment [u] p
+
+-- |Merge 'Comment' contents while keeping the first 'commentPrefix'.
 instance Semigroup Comment where
-    Comment a <> Comment b = Comment $ a <> b
+    Comment { unComment = ua, commentPrefix = p } <> Comment { unComment = ub }
+        = Comment { unComment = ua <> ub, commentPrefix = p }
 
 instance Monoid Comment where
-    mempty = Comment []
+    mempty = Comment [] "#"
 
 instance Data.String.IsString Comment where
-    fromString s = Comment $ T.pack <$> lines s
+    fromString s = Comment (T.pack <$> lines s) "#"
 
 
 getFirstSection :: XDGDesktop -> Section

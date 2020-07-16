@@ -44,8 +44,8 @@ import qualified OrderedMap                    as OM
 import qualified Parser                        as P
 
 
-commentStart :: P.Parser ()
-commentStart = P.chunk "#" >> return ()
+commentStart :: P.Parser T.Text
+commentStart = P.choice ["#", ";"]
 
 
 parser :: P.Parser XDGDesktop
@@ -78,8 +78,8 @@ parseSection = mergeKeys <$> parseValueOrIgnoreEmptyLine
 parseValue :: P.Parser (T.Text, Value T.Text)
 parseValue = do
     preComments' <- Maybe.fromMaybe mempty <$> P.optional
-        (newComment <$> P.manyTill
-            (commentStart >> P.line)
+        (mconcat <$> P.manyTill
+            (newComment1 <$> commentStart <*> P.line)
             (P.lookAhead $ P.try
                 (   (disabledAssignment >> return ())
                 <|> (P.satisfy (/= '#') >> return ())
@@ -103,11 +103,16 @@ parseValue = do
         P.space >> P.optional commentStart >> P.space >> C.anyAssignment P.line
 
     assignment =
-        C.anyAssignment $ P.until $ P.lookAhead $ commentStart <|> P.eol
+        C.anyAssignment
+            $   P.until
+            $   P.lookAhead
+            $   (commentStart >> return ())
+            <|> P.eol
 
 
 parseComment :: P.Parser Comment
-parseComment = newComment <$> P.some (commentStart >> P.line)
+parseComment = mconcat <$> P.some (newComment1 <$> commentStart <*> P.line)
+
 
 
 followOrderFrom :: XDGDesktop -> XDGDesktop -> XDGDesktop

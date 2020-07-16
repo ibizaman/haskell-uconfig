@@ -44,9 +44,9 @@ spec = do
         parsesRight "one line" parseComment "# my comment"   " my comment"
         parsesRight "one line" parseComment "# my comment\n" " my comment"
         parsesRight "two lines" parseComment "# my \n# comment"
-            $ newComment [" my ", " comment"]
+            $ newComment "#" [" my ", " comment"]
         parsesRight "two lines" parseComment "# my \n# comment\n"
-            $ newComment [" my ", " comment"]
+            $ newComment "#" [" my ", " comment"]
 
     H.describe "parseValue" $ do
         parsesLeft "empty"      parseValue ""
@@ -74,11 +74,11 @@ spec = do
         parsesRight
             "one value with both comments"
             parseValue
-            "# my pre\n# comment\na=b   # my\n# post comment"
+            "# my pre\n# comment\na=b   ; my\n# post comment"
             ( "a"
             , "b   "
-            <# (newComment [" my pre", " comment"])
-            #> (newComment [" my", " post comment"])
+            <# (newComment "#" [" my pre", " comment"])
+            #> (newComment ";" [" my", " post comment"])
             )
 
     H.describe "parseSection" $ do

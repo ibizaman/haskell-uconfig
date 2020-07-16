@@ -9,11 +9,6 @@ import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
 import           Config
-import           Syntax                         ( Value
-                                                , newValue
-                                                , (/**)
-                                                )
-import qualified Data.Map.Strict               as Map
 import qualified Parser                        as P
 import qualified Utils                         as U
 
