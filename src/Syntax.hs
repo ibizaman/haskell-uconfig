@@ -2,37 +2,60 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-|
 Module      : Syntax
-Description : Helpers to create Parsers and Generators
+Description :
 Copyright   : (c) Pierre Penninckx, 2020
 License     : GPL-3
 Maintainer  : Pierre Penninckx (ibizapeanut@gmail.com)
 Stability   : experimental
 Portability : POSIX
 
-Helpers to create Parsers and Generators.
+Datatypes representing a config file with sections, assignments and
+comments. And functions to modify those datatypes. Its goal is to
+retain all formatting while allowing the easiest transformation of its
+content.
+
+This module does not provide parsers to transform an actual config
+file into this datatype, or to do the inverse transform. See
+'Syntax.XDGDesktop.parser' and 'Syntax.XDGDesktop.generate' for that.
+
+A few noteworthy features and conventions:
+
+- All comments above an assignment belongs as 'preComments' to that
+  assignment.
+- All comments to the right of an assignment belongs as 'postComments'
+  to that assignment.
+- An assignment can be 'enabled' or not. It is considered disabled if
+  it is preceded by a comment sign.
 -}
 module Syntax
     ( XDGDesktop(..)
+
+    -- * Sections
     , Sections
     , newSections
     , unSections
+
+    -- * Section
     , Section
     , newSection
     , unSection
+    , (/*)
+    , (/*.)
+    -- * Value
     , Value(value, enabled, preComments, postComments)
     , newValue
     , setEnabled
-    , Comment(unComment)
-    , newComment
-    , (/*)
-    , (/*.)
     , (/**)
     , (/**.)
+
+    -- * Comment
+    , Comment(unComment)
+    , newComment
     , (<#)
     , (#>)
 
-    -- Query
-    , getMainSection
+    -- * Query
+    , getFirstSection
     , getSection
     , getValue
     )
@@ -47,14 +70,24 @@ import qualified SyntaxModifier                as SM
 import qualified OrderedMap                    as OM
 
 
+-- |Datatype representing any config file fitting [Systemd's extended
+-- XDGDesktop](https://www.freedesktop.org/software/systemd/man/systemd.syntax.html)
+-- syntax. It retains all formatting and comments.
 data XDGDesktop = XDGDesktop
-    { firstSection :: Section
-    , firstComments :: Comment
-    , sections :: Sections
-    , trailingComments :: Comment
+    { firstSection :: Section     -- ^Global section, that is
+                                  -- everything before the first
+                                  -- header.
+    , firstComments :: Comment    -- ^'Comment' from the global
+                                  -- section. This would only be
+                                  -- filled out if there are no
+                                  -- assignments in the first section.
+    , sections :: Sections        -- ^Sections with headers.
+    , trailingComments :: Comment -- ^'Comment' appearing after the
+                                  -- last assignment.
     }
     deriving (Show, Eq)
 
+-- |Union of two 'XDGDesktop'.
 instance Semigroup XDGDesktop where
     a <> b = XDGDesktop
         { firstSection     = firstSection a <> firstSection b
@@ -70,12 +103,29 @@ instance Monoid XDGDesktop where
                         , trailingComments = mempty
                         }
 
+-- |Adds or replaces a 'Section' in a 'XDGDesktop'. The first argument
+-- of the tuple is a 'Maybe':
+--
+-- - A 'Just' means the 'Section' will be added to the 'sections' of
+-- the 'XDGDesktop'.
+-- - A 'Nothing' means the 'Section' will be added to the
+-- 'firstSection' of the 'XDGDesktop'.
 (/*) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
 x /* (Just k, s) = x
     { sections = let (Sections s') = sections x in Sections $ OM.insert k s s'
     }
 x /* (Nothing, s) = x { firstSection = s }
 
+-- |Alters a 'Section' in a 'XDGDesktop'. The first argument
+-- of the tuple is a 'Maybe':
+--
+-- - A 'Just' means the 'Section' that will be altered is in the 'sections' of
+-- the 'XDGDesktop'.
+-- - A 'Nothing' means the first 'Section' will be altered .
+--
+-- The second argument to the tuple is the function that alters a
+-- 'Section'. It should follow the same behavior as
+-- 'OrderedMap.alter'.
 (/*.)
     :: XDGDesktop
     -> (Maybe T.Text, Maybe Section -> Maybe Section)
@@ -90,14 +140,18 @@ x /*. (Nothing, f) = x
     }
 
 
+-- |Header name to 'Section' pairs. Think of it as a list of tuples
+-- with header names on the left and 'Section's on the right.
 newtype Sections = Sections {
       unSections :: OM.OrderedMap T.Text Section
     }
     deriving (Show, Eq)
 
+-- |Create 'Sections' from a list of pairs.
 newSections :: [(T.Text, Section)] -> Sections
 newSections = Sections . OM.fromList
 
+-- |Merges the content of two sections.
 instance Semigroup Sections where
     Sections a <> Sections b = Sections $ a <> b
 
@@ -194,8 +248,8 @@ instance Data.String.IsString Comment where
     fromString s = Comment $ T.pack <$> lines s
 
 
-getMainSection :: XDGDesktop -> Section
-getMainSection = firstSection
+getFirstSection :: XDGDesktop -> Section
+getFirstSection = firstSection
 
 getSection :: XDGDesktop -> T.Text -> Section
 getSection x name =

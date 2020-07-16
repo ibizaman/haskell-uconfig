@@ -113,7 +113,7 @@ parseComment = newComment <$> P.some (commentStart >> P.line)
 followOrderFrom :: XDGDesktop -> XDGDesktop -> XDGDesktop
 followOrderFrom xdg order = xdg
     { sections = newSections
-                 $ OM.mapWithKeys (\k s -> [(k, sortSection k s)])
+                 $ OM.foldWithKeys (\k s -> [(k, sortSection k s)])
                  $ (unSections $ sections xdg)
                  `OM.followOrderFrom` (unSections $ sections order)
     }
@@ -133,7 +133,7 @@ generate xdg =
         <> mconcat
                (interleave
                    [""]
-                   (OM.mapWithKeys
+                   (OM.foldWithKeys
                        (\h s -> [[generateHeader h] <> generateSection s])
                        (unSections $ sections xdg)
                    )
@@ -147,7 +147,7 @@ generate xdg =
     generateHeader h = "[" <> h <> "]"
 
     generateSection :: Section -> [T.Text]
-    generateSection s = OM.mapWithKeys generateValues $ unSection s
+    generateSection s = OM.foldWithKeys generateValues $ unSection s
 
     generateValues :: T.Text -> [Value T.Text] -> [T.Text]
     generateValues k vs = mconcat $ fmap (generateValue k) vs

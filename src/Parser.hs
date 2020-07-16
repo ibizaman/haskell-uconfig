@@ -1,20 +1,22 @@
 {-|
 Module      : Parser
-Description : Parsing helper functions
+Description : Low-level 'Text.Megaparsec' helpers
 Copyright   : (c) Pierre Penninckx, 2020
 License     : GPL-3
 Maintainer  : Pierre Penninckx (ibizapeanut@gmail.com)
 Stability   : experimental
 Portability : POSIX
 
-The Parser module provides helper functions for parsing strings.
+Provides low-level 'Text.Megaparsec' helper functions as well as some
+re-exports from 'Text.Megaparsec'.
 -}
 module Parser
     (
-        -- Base parser
+      -- * Parse 'T.Text'
       Parser
     , parse
-    , parse'
+
+      -- * Base parser primitive and re-exports
     , MP.choice
     , MP.between
     , between'
@@ -35,7 +37,7 @@ module Parser
     , MP.optional
     , MP.fancyFailure
 
-        -- Words
+      -- * Word parsing
     , MP.chunk
     , MPC.char
     , word
@@ -45,7 +47,7 @@ module Parser
     , number
     , until
 
-        -- Lines
+      -- * Full line parsing
     , line
     , emptyLine
     , lines
@@ -70,10 +72,10 @@ import qualified Text.Megaparsec.Char          as MPC
 import qualified Text.Read                     as TR
 
 
--- |Parser is a 'MP.Parser' specialized for 'T.Text'.
+-- |Specialized 'MP.Parser' for 'T.Text' with no custom error.
 type Parser = MP.Parsec Void.Void T.Text
 
--- |Parse an input given a parser.
+-- |Parse an input given a 'Parser'.
 parse
     :: Parser a        -- ^How to parse the input.
     -> T.Text          -- ^The input to parse.
@@ -81,29 +83,39 @@ parse
 parse parser input =
     mapLeft MP.errorBundlePretty $ MP.parse parser "input" input
 
--- |Parse an input given a parser with a custom parsing error.
-parse'
-    :: MP.ShowErrorComponent e
-    => MP.Parsec e T.Text a -- ^How to parse the input.
-    -> T.Text               -- ^The input to parse.
-    -> Either (NL.NonEmpty T.Text) a           -- ^Returns the parsed value or an error string.
-parse' parser input =
-    mapLeft (fmap (T.pack . MP.parseErrorTextPretty) . MP.bundleErrors)
-        $ MP.parse parser "input" input
-
 
 -- |Like 'MP.between' but also returns what the 'open' and 'close'
 -- parser matched.
+--
+-- >>> parse (between' space space word) "  abc "
+-- Right (2,"abc",1)
 between' :: Parser open -> Parser close -> Parser p -> Parser (open, p, close)
 between' open close p = (,,) <$> open <*> p <*> close
 
 
 -- |Parse 0 or more space character and return how many was matched.
+--
+-- >>> parse space "  "
+-- Right 2
 space :: Parser Int
 space = fmap length $ MP.many $ MPC.char ' '
 
 
--- |Parse a number in format '[-+]?[0-9](.[0-9])?'.
+-- |Parse a number in format @[-+]?[0-9]+(.[0-9])?@.
+--
+-- >>> parse (number :: Parser Int) "3"
+-- Right 3
+-- >>> parse (number :: Parser Float) "3"
+-- Right 3.0
+-- >>> parse (number :: Parser Int) "3.0"
+-- Left "input:1:4:\n  |\n1 | 3.0\n  |    ^\ncould not parse number\n"
+-- >>> parse (number :: Parser Float) "3.0"
+-- Right 3.0
+--
+-- >>> parse (number :: Parser Float) "+3.0"
+-- Right 3.0
+-- >>> parse (number :: Parser Float) "-3.0"
+-- Right (-3.0)
 number :: Read a => Parser a
 number = do
     sign' <- MP.optional (MP.satisfy (\x -> x == '-' || x == '+'))
@@ -129,11 +141,20 @@ number = do
 
 
 -- |Parse all characters until a given "stop" character.
+--
+-- >>> parse (until (P.chunk ".")) "a v?# s.fas"
+-- Right "a v?# s"
 until :: Parser b -> Parser T.Text
 until match = fmap T.pack $ MP.someTill MP.anySingle $ (match $> ()) <|> eol
 
 
--- |Matches one or more successive 'MPC.asciiChar'.
+-- |Matches one or more successive 'MPC.alphaNumberChar' or a @.@,
+-- @-@, @_@, @/@, @(@, @)@, @:@, @%@.
+--
+-- >>> parse word "ab.%?."
+-- Right "ab.%"
+-- >>> parse word "ab cd"
+-- Right "ab"
 word :: Parser T.Text
 word = T.pack <$> MP.some
     (MPC.alphaNumChar <|> MP.satisfy
@@ -157,12 +178,23 @@ word = T.pack <$> MP.some
         )
     )
 
--- |Matches one or more successive 'MPC.asciiChar'.
+-- |Matches one or more successive 'MPC.alphaNumberChar' or a given list of 'Char'.
+--
+-- >>> parse (word' []) "ab."
+-- Right "ab"
+-- >>> parse (word' ['.']) "ab."
+-- Right "ab."
 word' :: [Char] -> Parser T.Text
 word' cs = T.pack <$> MP.some (MPC.alphaNumChar <|> MP.oneOf cs)
 
 
 -- |Matches one or more 'word' separated by one or more spaces.
+-- Returns the words concatenated.
+--
+-- >>> parse words "ab cd"
+-- Right "ab cd"
+-- >>> parse words "a.b c:d"
+-- Right "a.b c:d"
 words :: Parser T.Text
 words =
     fmap (T.intercalate " " . NL.toList)
@@ -172,7 +204,12 @@ words =
         $ MPC.char ' '
 
 
--- |Matches one or more 'word' separated by a given string.
+-- |Matches one or more 'word' separated by a given 'Parser'.
+--
+-- >>> parse (wordsSepBy (word' []) (chunk ".")) "a.b.c"
+-- Right ("a" :| ["b","c"])
+-- >>> parse (wordsSepBy (word' ['.']) (chunk ".")) "a.b.c"
+-- Right ("a.b.c" :| [])
 wordsSepBy :: Parser T.Text -> Parser T.Text -> Parser (NL.NonEmpty T.Text)
 wordsSepBy w sep = do
     first <- w
@@ -182,30 +219,45 @@ wordsSepBy w sep = do
     return $ first :| rest
 
 
--- |Parse a line ending with a newline '\n' or '\r'. Succeeds on empty
--- line. Does not consume the newline.
+-- |Parse a line ending with a newline @\\n@ or @\\r@. Succeeds on
+-- empty line. Does not consume the newline.
 line :: Parser T.Text
 line = T.pack <$> MP.manyTill MP.anySingle eol
 
--- |Parse a line including only ending with a newline '\n' or '\r'.
--- Succeeds on empty line. Does not consume the newline.
+-- |Parse a line including spaces only ending with a newline @\\n@ or
+-- @\\r@. Succeeds on empty line. Does not consume the newline.
 emptyLine :: Parser ()
 emptyLine = MP.manyTill MPC.spaceChar (CM.void MPC.eol) $> ()
 
--- |Parse multiple 'line' in a row. Ends on an empty line. Fails if
--- there is only the empty line.
+-- |Parse multiple 'line's in a row. Ends on an empty line.
 lines :: Parser [T.Text]
 lines = MP.manyTill line eol
 
--- |Use given parser to parse multiple lines in a row. Ends on an
--- empty line. Fails if there is only the empty line.
+-- |Parse multiple times the given parser on each line, all in a row.
+-- Ends on an empty line. Must match once.
+--
+-- >>> parse (newlineSeparated (P.chunk "abc")) "abc"
+-- Right ["abc"]
+-- >>> parse (newlineSeparated (P.chunk "abc")) "abc\na"
+-- Right ["abc"]
+-- >>> parse (newlineSeparated (P.chunk "abc")) "abc\nabc\nab"
+-- Right ["abc","abc"]
+--
+-- Must succeed at least once:
+--
+-- >>> parse (newlineSeparated (P.chunk "abc")) ""
+-- Left "input:1:1:\n  |\n1 | <empty line>\n  | ^\nunexpected end of input\nexpecting \"abc\"\n"
+-- >>> parse (newlineSeparated (P.chunk "abc")) "a"
+-- Left "input:1:1:\n  |\n1 | a\n  | ^\nunexpected 'a'\nexpecting \"abc\"\n"
 newlineSeparated :: Parser a -> Parser [a]
 newlineSeparated parser = MP.sepEndBy1 parser eol
 
 
--- |Parse multiple 'lines' in a row separated by empty lines. Fails if
--- there is only the empty line, otherwise always consumes all
--- remaining input.
+-- |Parse multiple 'line's in a row separated by empty lines. Always
+-- consumes all remaining input.
+--
+-- >>> parse paragraphs "a\nb\nc\n\n\nd\ne\n"
+-- Right [["a","b","c"],["d","e"]]
 paragraphs :: Parser [[T.Text]]
 paragraphs = flip MP.manyTill MP.eof $ do
     r <- lines
@@ -213,12 +265,23 @@ paragraphs = flip MP.manyTill MP.eof $ do
     return r
 
 
--- |Parse a newline or end of file.
+-- |Parse a newline or end of file. You usually don't care about the
+-- difference when parsing a config file.
 eol :: Parser ()
 eol = CM.void MPC.eol <|> MP.eof
 
 
 -- |Builds a 'Monoid' from a list of 'P.Parser'.
+--
+-- Finds @2@ then @1@ so constructs the 'String' @"b" <> "a"@.
+--
+-- >>> parse (build [P.chunk "1" $> "a", P.chunk "2" $> "b"]) "21"
+-- Right "ba"
+--
+-- Like above, but it stops at 3 because it fails there.
+--
+-- >>> parse (build [P.chunk "1" $> "a", P.chunk "2" $> "b"]) "231"
+-- Right "b"
 build :: (Monoid a) => [Parser a] -> Parser a
 build ps = mconcat <$> MP.many (MP.choice (fmap MP.try ps))
 

@@ -14,19 +14,26 @@ Maintainer  : Pierre Penninckx (ibizapeanut@gmail.com)
 Stability   : experimental
 Portability : POSIX
 
-The Config.SystemdService module provides a function to parse Systemd
-Service files.
+The Config.SystemdService module supports parsing and generating Systemd files.
 
-https://www.freedesktop.org/software/systemd/man/systemd.service.html
+For now, it only supports [Service files](https://www.freedesktop.org/software/systemd/man/systemd.service.html).
+
+The main type this module exposes is SystemdService.
 -}
 module Config.SystemdService
-    ( EmptyDefault(..)
+    (
+    -- |Main type
+      SystemdService(..)
+
+    -- |Base types
+    , EmptyDefault(..)
     , SBool(svalue, stype)
     , sFalse
     , sTrue
     , setValue
     , setType
-    , SystemdService(..)
+
+    -- |Systemd specific types
     , Unit(..)
     , Description(..)
     , Documentation(..)
