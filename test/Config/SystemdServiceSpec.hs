@@ -86,10 +86,31 @@ spec = do
                                (mempty /** ("Before", ["one two"]) /** ("Before", ["three"]))
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Unit)
-                                   { before = S.newValue
-                                                  <$> [ ["one", "two"]
-                                                      , ["three"]
-                                                      ]
+                                   { before =
+                                       ResettableList
+                                           (   S.newValue
+                                           <$> [ ListElem ["one", "two"]
+                                               , ListElem ["three"]
+                                               ]
+                                           )
+                                   }
+                               )
+        H.it "with reset before"
+            $              (C.parser :: S.Section -> C.ParseResult Unit)
+                               (   mempty
+                               /** ("Before", ["one two"])
+                               /** ("Before", [""])
+                               /** ("Before", ["four"])
+                               )
+            `HPP.shouldBe` C.ParseSuccess
+                               ((mempty :: Unit)
+                                   { before = ResettableList
+                                       (   S.newValue
+                                       <$> [ ListElem ["one", "two"]
+                                           , ListReset
+                                           , ListElem ["four"]
+                                           ]
+                                       )
                                    }
                                )
         H.it "with description"

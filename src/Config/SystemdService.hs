@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
@@ -32,6 +33,9 @@ module Config.SystemdService
     , sTrue
     , setValue
     , setType
+    , ResettableList(..)
+    , ListElem(..)
+    , computeResettableList
 
     -- |Systemd specific types
     , Unit(..)
@@ -77,7 +81,7 @@ import           Syntax                         ( (/*)
 -- |Value that can be empty. It's Maybe with a different Semigroup
 -- implementation.
 data EmptyDefault a = Empty | Value a
-  deriving(Eq, Show)
+    deriving(Eq, Show)
 
 instance Semigroup (EmptyDefault x) where
     Value a <> _       = Value a
@@ -95,6 +99,53 @@ instance Applicative EmptyDefault where
     pure = Value
     Value f <*> m  = fmap f m
     Empty   <*> _m = Empty
+
+instance C.Config T.Text v => C.Config [S.Value T.Text] (EmptyDefault (S.Value v)) where
+    parser p = C.parser p >>= \case
+        []  -> C.ParseSuccess Empty
+        [x] -> C.ParseSuccess (Value x)
+        _   -> C.ParseError (C.MultipleFound "")
+
+    unparser = \case
+        Empty   -> []
+        Value x -> [fmap C.unparser x]
+
+
+newtype ResettableList a = ResettableList [S.Value (ListElem a)]
+    deriving (Eq, Show, Generic, Functor)
+    deriving (Semigroup, Monoid) via (Generically (ResettableList a))
+
+computeResettableList :: [ListElem a] -> [a]
+computeResettableList = foldr f []
+  where
+    f ListReset    _  = []
+    f (ListElem v) vs = v <> vs
+
+data ListElem a = ListReset | ListElem [a]
+    deriving(Eq, Show, Functor)
+
+instance C.Config T.Text v => C.Config T.Text (ListElem v) where
+    parser "" = C.ParseSuccess ListReset
+    parser t  = ListElem <$> (C.mergeParseResult $ fmap C.parser $ T.words t)
+
+    unparser ListReset    = ""
+    unparser (ListElem t) = T.unwords $ fmap C.unparser t
+
+instance C.Config T.Text v => C.Config [S.Value T.Text] (ResettableList v) where
+    parser ls = ResettableList <$> C.mergeParseResult (fmap convert ls) -- (d $ c $ b $ a ls)
+      where
+        convert
+            :: C.Config T.Text v
+            => S.Value T.Text
+            -> C.ParseResult (S.Value (ListElem v))
+        convert v = case S.value v of
+            "" -> C.ParseSuccess $ v { S.value = ListReset }
+            v' -> case C.parser v' of
+                C.ParseError   e   -> C.ParseError e
+                C.ParseSuccess v'' -> C.ParseSuccess (v { S.value = v'' })
+
+    unparser (ResettableList ls) =
+        fmap (\v -> v { S.value = C.unparser $ S.value v }) ls
 
 
 -- |Type of a Systemd boolean value
@@ -186,24 +237,14 @@ instance C.Config S.XDGDesktop SystemdService where
 data Unit = Unit
   { description :: EmptyDefault (S.Value Description)
   , documentation :: [S.Value Documentation]
-  , before :: [S.Value [Target]]
-  , after :: [S.Value [Target]]
-  , wants :: [S.Value [Target]]
-  , requires :: [S.Value [Target]]
-  , conflicts :: [S.Value [Target]]
+  , before :: ResettableList Target
+  , after :: ResettableList Target
+  , wants :: ResettableList Target
+  , requires :: ResettableList Target
+  , conflicts :: ResettableList Target
   }
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically Unit)
-
-instance C.Config T.Text v => C.Config [S.Value T.Text] (EmptyDefault (S.Value v)) where
-    parser p = C.parser p >>= \case
-        []  -> C.ParseSuccess Empty
-        [x] -> C.ParseSuccess (Value x)
-        _   -> C.ParseError (C.MultipleFound "")
-
-    unparser = \case
-        Empty   -> []
-        Value x -> [fmap C.unparser x]
 
 instance C.Config S.Section Unit where
     parser sec =

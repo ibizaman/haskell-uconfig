@@ -60,6 +60,8 @@ module Config
 
       -- * Misc
     , fetchInSection
+    , liftValue
+    , mergeParseResult
     )
 where
 
@@ -159,6 +161,16 @@ liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
 liftValue v = case S.value v of
     ParseSuccess v' -> ParseSuccess (v { S.value = v' })
     ParseError   e  -> ParseError e
+
+mergeParseResult :: [ParseResult v] -> ParseResult [v]
+mergeParseResult = foldr
+    (\x xs -> case xs of
+        ParseError   e   -> ParseError e
+        ParseSuccess xs' -> case x of
+            ParseError   e' -> ParseError e'
+            ParseSuccess x' -> ParseSuccess (x' : xs')
+    )
+    mempty
 
 
 -- |Helper to parse a 'T.Text' using a Megaparsec 'P.Parser'. Useful
