@@ -42,6 +42,7 @@ import qualified Control.Applicative           as CApp
 import qualified Data.Text                     as T
 import qualified Options.Applicative           as Args
 import qualified Parser                        as P
+import           Utils                          ( mapLeft )
 
 
 -- |Returns a 'Args.Parser' for sub-commands from a list of
@@ -62,5 +63,5 @@ desc :: String -> Args.InfoMod a
 desc d = Args.fullDesc <> Args.progDesc d
 
 -- |Provides a 'Args.ReadM' from a Megaparsec 'P.Parser'.
-parsecArg :: P.Parser v -> Args.ReadM v
-parsecArg parser = Args.eitherReader (P.parse parser . T.pack)
+parsecArg :: P.ShowErrorComponent e => P.Parser e v -> Args.ReadM v
+parsecArg parser = Args.eitherReader (mapLeft show . P.parse parser . T.pack)

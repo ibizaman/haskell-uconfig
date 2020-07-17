@@ -9,52 +9,58 @@ import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
 import           Config
+import qualified Data.Text                     as T
+import           Data.Void                      ( Void )
 import qualified Parser                        as P
 import qualified Utils                         as U
+
+
+parse :: P.Parser Void v -> T.Text -> Either (P.Error Void) v
+parse = P.parse
 
 
 spec :: H.Spec
 spec = do
     H.describe "spaced" $ do
         H.it "parses without space"
-            $              P.parse (spaced P.word) "word"
+            $              parse (spaced P.word) "word"
             `HPP.shouldBe` Right (Spaced 0 0 "word")
         H.it "parses with space"
-            $              P.parse (spaced P.word) "  word "
+            $              parse (spaced P.word) "  word "
             `HPP.shouldBe` Right (Spaced 2 1 "word")
         H.it "parses with trailing space"
-            $              P.parse (spaced P.word) "word "
+            $              parse (spaced P.word) "word "
             `HPP.shouldBe` Right (Spaced 0 1 "word")
     H.describe "quoted" $ do
-        H.it "not quoted" $ P.parse (quoted P.word) "word" `HPP.shouldBe` Right
+        H.it "not quoted" $ parse (quoted P.word) "word" `HPP.shouldBe` Right
             (NotQuoted "word")
         H.it "double quoted"
-            $              P.parse (quoted P.word) "\"word\""
+            $              parse (quoted P.word) "\"word\""
             `HPP.shouldBe` Right (DoubleQuoted 0 0 "word")
         H.it "double quoted with space"
-            $              P.parse (quoted P.word) "\" word  \""
+            $              parse (quoted P.word) "\" word  \""
             `HPP.shouldBe` Right (DoubleQuoted 1 2 "word")
         H.it "single quoted"
-            $              P.parse (quoted P.word) "'word'"
+            $              parse (quoted P.word) "'word'"
             `HPP.shouldBe` Right (SingleQuoted 0 0 "word")
         H.it "single quoted with space"
-            $              P.parse (quoted P.word) "'   word '"
+            $              parse (quoted P.word) "'   word '"
             `HPP.shouldBe` Right (SingleQuoted 3 1 "word")
     H.describe "assignment" $ do
         H.it "parses assignment"
-            $              P.parse (anyAssignment P.word) "key=value"
+            $              parse (anyAssignment P.word) "key=value"
             `HPP.shouldBe` Right
                                (Assignment (Spaced 0 0 (NotQuoted "key"))
                                            (Spaced 0 0 (NotQuoted "value"))
                                )
         H.it "parses assignment with spaces"
-            $              P.parse (anyAssignment P.word) "  key   = value   "
+            $              parse (anyAssignment P.word) "  key   = value   "
             `HPP.shouldBe` Right
                                (Assignment (Spaced 2 3 (NotQuoted "key"))
                                            (Spaced 1 3 (NotQuoted "value"))
                                )
         H.it "parses assignment with multiple words as value"
-            $              P.parse (anyAssignment P.words) "key=v a l u e"
+            $              parse (anyAssignment P.words) "key=v a l u e"
             `HPP.shouldBe` Right
                                (Assignment
                                    (Spaced 0 0 (NotQuoted "key"))
@@ -62,7 +68,7 @@ spec = do
                                )
     H.describe "flat" $ do
         H.it "parses one line"
-            $              P.parse (flat P.word) "key=value"
+            $              parse (flat P.word) "key=value"
             `HPP.shouldBe` Right
                                (Flat
                                    [ Assignment
@@ -71,7 +77,7 @@ spec = do
                                    ]
                                )
         H.it "parses multiple lines"
-            $ P.parse (flat P.word) "key=value\nkey2=value2\nkey3=value3"
+            $ parse (flat P.word) "key=value\nkey2=value2\nkey3=value3"
             `HPP.shouldBe` Right
                                (Flat
                                    [ Assignment
@@ -86,8 +92,8 @@ spec = do
                                    ]
                                )
         H.it "parses multiple lines with spaces"
-            $ P.parse (flat P.word)
-                      " key  =   value \nkey2=value2\n key3  =  value3 "
+            $ parse (flat P.word)
+                    " key  =   value \nkey2=value2\n key3  =  value3 "
             `HPP.shouldBe` Right
                                (Flat
                                    [ Assignment
@@ -102,7 +108,7 @@ spec = do
                                    ]
                                )
         H.it "parses multiple lines with spaces and quotes"
-            $              P.parse
+            $              parse
                                (flat P.word)
                                " \" key \"  =   value \n'key2'='  value2'\n key3  =  value3 "
             `HPP.shouldBe` Right
@@ -119,28 +125,27 @@ spec = do
                                    ]
                                )
     H.describe "anyHeader" $ do
-        H.it "parses header"
-            $              P.parse anyHeader "[section]"
-            `HPP.shouldBe` Right "section"
+        H.it "parses header" $ parse anyHeader "[section]" `HPP.shouldBe` Right
+            "section"
         H.it "parses header with trailing newline"
-            $              P.parse anyHeader "[section]\n"
+            $              parse anyHeader "[section]\n"
             `HPP.shouldBe` Right "section"
     H.describe "header" $ do
         H.it "parses header"
-            $              P.parse (header "section") "[section]"
+            $              parse (header "section") "[section]"
             `HPP.shouldBe` Right ()
         H.it "parses header with trailing newline"
-            $              P.parse (header "section") "[section]\n"
+            $              parse (header "section") "[section]\n"
             `HPP.shouldBe` Right ()
         H.it "parses another header"
-            $                   P.parse (header "other") "[section]"
+            $                   parse (header "other") "[section]"
             `HPP.shouldSatisfy` U.isLeft
         H.it "parses another header with trailing newline"
-            $                   P.parse (header "other") "[section]\n"
+            $                   parse (header "other") "[section]\n"
             `HPP.shouldSatisfy` U.isLeft
     H.describe "section"
         $              H.it "parses section"
-        $              P.parse (anySection P.word) "[section]\nkey=value"
+        $              parse (anySection P.word) "[section]\nkey=value"
         `HPP.shouldBe` Right
                            ( "section"
                            , [ Assignment (Spaced 0 0 (NotQuoted "key"))
@@ -149,7 +154,7 @@ spec = do
                            )
     H.describe "sectioned" $ do
         H.it "parses one section"
-            $              P.parse (sectioned P.word) "[section]\nkey=value"
+            $              parse (sectioned P.word) "[section]\nkey=value"
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"
@@ -161,8 +166,8 @@ spec = do
                                    ]
                                )
         H.it "parses multiple sections"
-            $              P.parse (sectioned P.word)
-                                   "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
+            $              parse (sectioned P.word)
+                                 "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"
@@ -184,20 +189,20 @@ spec = do
                                )
     H.describe "fetchInSection" $ do
         H.it "stops gracefully if empty"
-            $              P.parse (fetchInSection (P.chunk "x")) ""
+            $              parse (fetchInSection (P.chunk "x")) ""
             `HPP.shouldBe` Right Nothing
         H.it "stops gracefully if not found"
-            $              P.parse (fetchInSection (P.chunk "x")) "a\n\nb\n"
+            $              parse (fetchInSection (P.chunk "x")) "a\n\nb\n"
             `HPP.shouldBe` Right Nothing
         H.it "stops gracefully if not found before section"
-            $              P.parse (fetchInSection (P.chunk "x")) "a\n\nb\n[s2]"
+            $              parse (fetchInSection (P.chunk "x")) "a\n\nb\n[s2]"
             `HPP.shouldBe` Right Nothing
         H.it "stops at section"
-            $ P.parse (fetchInSection (P.chunk "x")) "a\n\nb\n[s2]\nx"
+            $ parse (fetchInSection (P.chunk "x")) "a\n\nb\n[s2]\nx"
             `HPP.shouldBe` Right Nothing
         H.it "found x"
-            $ P.parse (fetchInSection (P.chunk "x")) "\na\n\nx\n\n[s2]\n"
+            $ parse (fetchInSection (P.chunk "x")) "\na\n\nx\n\n[s2]\n"
             `HPP.shouldBe` Right (Just "x")
         H.it "found x<space>y"
-            $ P.parse (fetchInSection (P.chunk "x y")) "\na b\n\nx y\n\n[s2]\n"
+            $ parse (fetchInSection (P.chunk "x y")) "\na b\n\nx y\n\n[s2]\n"
             `HPP.shouldBe` Right (Just "x y")

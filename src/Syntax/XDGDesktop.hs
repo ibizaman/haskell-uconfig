@@ -44,11 +44,11 @@ import qualified OrderedMap                    as OM
 import qualified Parser                        as P
 
 
-commentStart :: P.Parser T.Text
+commentStart :: Ord e => P.Parser e T.Text
 commentStart = P.choice ["#", ";"]
 
 
-parser :: P.Parser XDGDesktop
+parser :: Ord e => P.Parser e XDGDesktop
 parser =
     XDGDesktop
         <$> (Maybe.fromMaybe mempty <$> P.optional (P.try parseSection))
@@ -57,25 +57,25 @@ parser =
         <*> (Maybe.fromMaybe mempty <$> P.optional parseComment)
 
 
-parseSections :: P.Parser Sections
+parseSections :: Ord e => P.Parser e Sections
 parseSections = newSections <$> P.some ((,) <$> parseHeader <*> parseSection)
 
 
-parseHeader :: P.Parser T.Text
+parseHeader :: Ord e => P.Parser e T.Text
 parseHeader = C.anyHeader
 
 
-parseSection :: P.Parser Section
+parseSection :: Ord e => P.Parser e Section
 parseSection = mergeKeys <$> parseValueOrIgnoreEmptyLine
   where
-    parseValueOrIgnoreEmptyLine :: P.Parser [(T.Text, Value T.Text)]
+    parseValueOrIgnoreEmptyLine :: Ord e => P.Parser e [(T.Text, Value T.Text)]
     parseValueOrIgnoreEmptyLine = Maybe.catMaybes <$> P.many
         ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
 
     mergeKeys = foldl (/**) mempty . fmap (\(k, v) -> (k, [v]))
 
 
-parseValue :: P.Parser (T.Text, Value T.Text)
+parseValue :: Ord e => P.Parser e (T.Text, Value T.Text)
 parseValue = do
     preComments' <- Maybe.fromMaybe mempty <$> P.optional
         (mconcat <$> P.manyTill
@@ -110,7 +110,7 @@ parseValue = do
             <|> P.eol
 
 
-parseComment :: P.Parser Comment
+parseComment :: Ord e => P.Parser e Comment
 parseComment = mconcat <$> P.some (newComment1 <$> commentStart <*> P.line)
 
 

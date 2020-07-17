@@ -14,7 +14,9 @@ module Parser
     (
       -- * Parse 'T.Text'
       Parser
+    , Error
     , parse
+    , MP.ShowErrorComponent(..)
 
       -- * Base parser primitive and re-exports
     , MP.choice
@@ -64,7 +66,6 @@ import           Control.Applicative            ( (<|>) )
 import qualified Control.Monad                 as CM
 import           Data.Functor                   ( ($>) )
 import qualified Data.Text                     as T
-import qualified Data.Void                     as Void
 import qualified Data.List.NonEmpty            as NL
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Text.Megaparsec               as MP
@@ -72,16 +73,21 @@ import qualified Text.Megaparsec.Char          as MPC
 import qualified Text.Read                     as TR
 
 
--- |Specialized 'MP.Parser' for 'T.Text' with no custom error.
-type Parser = MP.Parsec Void.Void T.Text
+-- |Specialized 'MP.Parser' for 'T.Text' with a custom error.
+type Parser e = MP.Parsec e T.Text
+
+newtype Error e = Error (MP.ParseErrorBundle T.Text e)
+    deriving(Eq)
 
 -- |Parse an input given a 'Parser'.
 parse
-    :: Parser a        -- ^How to parse the input.
-    -> T.Text          -- ^The input to parse.
-    -> Either String a -- ^Returns the parsed value or an error string.
-parse parser input =
-    mapLeft MP.errorBundlePretty $ MP.parse parser "input" input
+    :: Parser e a                              -- ^How to parse the input.
+    -> T.Text                                  -- ^The input to parse.
+    -> Either (Error e) a -- ^Returns the parsed value or an error.
+parse parser = mapLeft Error . MP.parse parser "input"
+
+instance MP.ShowErrorComponent e => Show (Error e) where
+    show (Error e) = MP.errorBundlePretty e
 
 
 -- |Like 'MP.between' but also returns what the 'open' and 'close'
@@ -89,7 +95,11 @@ parse parser input =
 --
 -- >>> parse (between' space space word) "  abc "
 -- Right (2,"abc",1)
-between' :: Parser open -> Parser close -> Parser p -> Parser (open, p, close)
+between'
+    :: Parser e open
+    -> Parser e close
+    -> Parser e p
+    -> Parser e (open, p, close)
 between' open close p = (,,) <$> open <*> p <*> close
 
 
@@ -97,7 +107,7 @@ between' open close p = (,,) <$> open <*> p <*> close
 --
 -- >>> parse space "  "
 -- Right 2
-space :: Parser Int
+space :: Ord e => Parser e Int
 space = fmap length $ MP.many $ MPC.char ' '
 
 
@@ -116,7 +126,7 @@ space = fmap length $ MP.many $ MPC.char ' '
 -- Right 3.0
 -- >>> parse (number :: Parser Float) "-3.0"
 -- Right (-3.0)
-number :: Read a => Parser a
+number :: (Read a, Ord e) => Parser e a
 number = do
     sign' <- MP.optional (MP.satisfy (\x -> x == '-' || x == '+'))
     let sign = case sign' of
@@ -144,7 +154,7 @@ number = do
 --
 -- >>> parse (until (P.chunk ".")) "a v?# s.fas"
 -- Right "a v?# s"
-until :: Parser b -> Parser T.Text
+until :: Ord e => Parser e b -> Parser e T.Text
 until match = fmap T.pack $ MP.someTill MP.anySingle $ (match $> ()) <|> eol
 
 
@@ -155,7 +165,7 @@ until match = fmap T.pack $ MP.someTill MP.anySingle $ (match $> ()) <|> eol
 -- Right "ab.%"
 -- >>> parse word "ab cd"
 -- Right "ab"
-word :: Parser T.Text
+word :: Ord e => Parser e T.Text
 word = T.pack <$> MP.some
     (MPC.alphaNumChar <|> MP.satisfy
         (\x ->
@@ -184,7 +194,7 @@ word = T.pack <$> MP.some
 -- Right "ab"
 -- >>> parse (word' ['.']) "ab."
 -- Right "ab."
-word' :: [Char] -> Parser T.Text
+word' :: Ord e => [Char] -> Parser e T.Text
 word' cs = T.pack <$> MP.some (MPC.alphaNumChar <|> MP.oneOf cs)
 
 
@@ -195,7 +205,7 @@ word' cs = T.pack <$> MP.some (MPC.alphaNumChar <|> MP.oneOf cs)
 -- Right "ab cd"
 -- >>> parse words "a.b c:d"
 -- Right "a.b c:d"
-words :: Parser T.Text
+words :: Ord e => Parser e T.Text
 words =
     fmap (T.intercalate " " . NL.toList)
         $ wordsSepBy word
@@ -210,7 +220,11 @@ words =
 -- Right ("a" :| ["b","c"])
 -- >>> parse (wordsSepBy (word' ['.']) (chunk ".")) "a.b.c"
 -- Right ("a.b.c" :| [])
-wordsSepBy :: Parser T.Text -> Parser T.Text -> Parser (NL.NonEmpty T.Text)
+wordsSepBy
+    :: Ord e
+    => Parser e T.Text
+    -> Parser e T.Text
+    -> Parser e (NL.NonEmpty T.Text)
 wordsSepBy w sep = do
     first <- w
     rest  <- MP.many $ MP.try $ do
@@ -221,16 +235,16 @@ wordsSepBy w sep = do
 
 -- |Parse a line ending with a newline @\\n@ or @\\r@. Succeeds on
 -- empty line. Does not consume the newline.
-line :: Parser T.Text
+line :: Ord e => Parser e T.Text
 line = T.pack <$> MP.manyTill MP.anySingle eol
 
 -- |Parse a line including spaces only ending with a newline @\\n@ or
 -- @\\r@. Succeeds on empty line. Does not consume the newline.
-emptyLine :: Parser ()
+emptyLine :: Ord e => Parser e ()
 emptyLine = MP.manyTill MPC.spaceChar (CM.void MPC.eol) $> ()
 
 -- |Parse multiple 'line's in a row. Ends on an empty line.
-lines :: Parser [T.Text]
+lines :: Ord e => Parser e [T.Text]
 lines = MP.manyTill line eol
 
 -- |Parse multiple times the given parser on each line, all in a row.
@@ -249,7 +263,7 @@ lines = MP.manyTill line eol
 -- Left "input:1:1:\n  |\n1 | <empty line>\n  | ^\nunexpected end of input\nexpecting \"abc\"\n"
 -- >>> parse (newlineSeparated (P.chunk "abc")) "a"
 -- Left "input:1:1:\n  |\n1 | a\n  | ^\nunexpected 'a'\nexpecting \"abc\"\n"
-newlineSeparated :: Parser a -> Parser [a]
+newlineSeparated :: Ord e => Parser e a -> Parser e [a]
 newlineSeparated parser = MP.sepEndBy1 parser eol
 
 
@@ -258,7 +272,7 @@ newlineSeparated parser = MP.sepEndBy1 parser eol
 --
 -- >>> parse paragraphs "a\nb\nc\n\n\nd\ne\n"
 -- Right [["a","b","c"],["d","e"]]
-paragraphs :: Parser [[T.Text]]
+paragraphs :: Ord e => Parser e [[T.Text]]
 paragraphs = flip MP.manyTill MP.eof $ do
     r <- lines
     _ <- MP.many MPC.eol
@@ -267,7 +281,7 @@ paragraphs = flip MP.manyTill MP.eof $ do
 
 -- |Parse a newline or end of file. You usually don't care about the
 -- difference when parsing a config file.
-eol :: Parser ()
+eol :: Ord e => Parser e ()
 eol = CM.void MPC.eol <|> MP.eof
 
 
@@ -282,7 +296,7 @@ eol = CM.void MPC.eol <|> MP.eof
 --
 -- >>> parse (build [P.chunk "1" $> "a", P.chunk "2" $> "b"]) "231"
 -- Right "b"
-build :: (Monoid a) => [Parser a] -> Parser a
+build :: (Monoid a, Ord e) => [Parser e a] -> Parser e a
 build ps = mconcat <$> MP.many (MP.choice (fmap MP.try ps))
 
 

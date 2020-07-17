@@ -100,7 +100,7 @@ data ParseError
       | Unparseable T.Text -- ^Generic error for everything that
                            -- doesn't fit in one of the above
                            -- constructor.
-    deriving(Show, Eq)
+    deriving(Show, Eq, Ord)
 
 instance Semigroup v => Semigroup (ParseResult v) where
     (ParseSuccess a) <> (ParseSuccess b) = ParseSuccess $ a <> b
@@ -163,7 +163,7 @@ liftValue v = case S.value v of
 
 -- |Helper to parse a 'T.Text' using a Megaparsec 'P.Parser'. Useful
 -- because the result is transformed to a 'ParseResult'.
-parseText :: P.Parser v -> T.Text -> ParseResult v
+parseText :: P.Parser ParseError v -> T.Text -> ParseResult v
 parseText p t = asParseResult $ P.parse p t
   where
     asParseResult (Left  _) = ParseError (Unparseable t)
@@ -216,17 +216,17 @@ data Spaced a = Spaced
 
 -- |Parses a flat config consisting only of a continuous list of
 -- 'assignment'.
-flat :: P.Parser v -> P.Parser (Flat v)
+flat :: Ord e => P.Parser e v -> P.Parser e (Flat v)
 flat valueParser = Flat <$> P.newlineSeparated (anyAssignment valueParser)
 
 
 -- |Parses a flat config with sections.
-sectioned :: P.Parser v -> P.Parser (Sectioned v)
+sectioned :: Ord e => P.Parser e v -> P.Parser e (Sectioned v)
 sectioned valueParser = Sectioned <$> P.some (anySection valueParser)
 
 
 -- |Parses something in current section and backtracks.
-fetchInSection :: P.Parser v -> P.Parser (Maybe v)
+fetchInSection :: Ord e => P.Parser e v -> P.Parser e (Maybe v)
 fetchInSection match = P.lookAhead go
   where
     go = P.choice
@@ -251,8 +251,9 @@ fetchInSection match = P.lookAhead go
 -- unexpected "other]"
 -- expecting "header"
 header
-    :: T.Text -- ^ Name of the header.
-    -> P.Parser ()
+    :: Ord e
+    => T.Text -- ^ Name of the header.
+    -> P.Parser e ()
 header name = P.between "[" "]" (P.chunk name) <* P.line $> ()
 
 
@@ -272,7 +273,7 @@ header name = P.between "[" "]" (P.chunk name) <* P.line $> ()
 --   |    ^
 -- unexpected space
 -- expecting ']' or alphanumeric character
-anyHeader :: P.Parser T.Text
+anyHeader :: Ord e => P.Parser e T.Text
 anyHeader = P.between "[" "]" P.word <* P.line
 
 
@@ -280,17 +281,19 @@ anyHeader = P.between "[" "]" P.word <* P.line
 -- 'T.Text' given as first argument followed by a list of
 -- 'anyAssignment'.
 section
-    :: T.Text                   -- ^Name of expected header.
-    -> P.Parser v               -- ^Parse for the values of the assignments.
-    -> P.Parser [Assignment v]  -- ^List of assignments in the section.
+    :: Ord e
+    => T.Text                   -- ^Name of expected header.
+    -> P.Parser e v               -- ^Parse for the values of the assignments.
+    -> P.Parser e [Assignment v]  -- ^List of assignments in the section.
 section name valueParser =
     header name *> P.newlineSeparated (anyAssignment valueParser)
 
 -- |Megaparsec 'P.Parser' parsing a 'header' followed by a list of
 -- 'anyAssignment'.
 anySection
-    :: P.Parser v                        -- ^Parse for the values of the assignments.
-    -> P.Parser (T.Text, [Assignment v]) -- ^Name of header and list of assignments in the section.
+    :: Ord e
+    => P.Parser e v                        -- ^Parse for the values of the assignments.
+    -> P.Parser e (T.Text, [Assignment v]) -- ^Name of header and list of assignments in the section.
 anySection valueParser =
     (,) <$> anyHeader <*> P.newlineSeparated (anyAssignment valueParser)
 
@@ -301,9 +304,10 @@ anySection valueParser =
 -- >>> P.parse (assignment "key" P.word) "key = value"
 -- Right "value"
 assignment
-    :: T.Text -- ^Name of the 'key'.
-    -> P.Parser v  -- ^Parser of the value of the assignment.
-    -> P.Parser v
+    :: Ord e
+    => T.Text -- ^Name of the 'key'.
+    -> P.Parser e v  -- ^Parser of the value of the assignment.
+    -> P.Parser e v
 assignment name valueParser = do
     _     <- spaced $ quoted (P.chunk name)
     _     <- P.char '='
@@ -323,8 +327,9 @@ assignment name valueParser = do
 -- >>> P.parse (anyAssignment P.word) " ' key' = \" value \"  "
 -- Right (Assignment (Spaced 1 1 (SingleQuoted 1 0 "key")) (Spaced 1 2 (DoubleQuoted 1 1 "value")))
 anyAssignment
-    :: P.Parser v -- ^Parser of the value of the assignment.
-    -> P.Parser (Assignment v)
+    :: Ord e
+    => P.Parser e v -- ^Parser of the value of the assignment.
+    -> P.Parser e (Assignment v)
 anyAssignment valueParser = do
     key   <- spaced $ quoted P.word
     _     <- P.char '='
@@ -340,7 +345,7 @@ anyAssignment valueParser = do
 --
 -- >>> P.parse (spaced P.word) " value  "
 -- Right (Spaced 1 2 "value")
-spaced :: P.Parser a -> P.Parser (Spaced a)
+spaced :: Ord e => P.Parser e a -> P.Parser e (Spaced a)
 spaced p = do
     (open, middle, close) <- P.between' P.space P.space p
     return $ Spaced open close middle
@@ -357,7 +362,7 @@ spaced p = do
 --
 -- >>> P.parse (quoted P.word) "\"value\""
 -- Right (DoubleQuoted 0 0 "value")
-quoted :: P.Parser a -> P.Parser (Quoted a)
+quoted :: Ord e => P.Parser e a -> P.Parser e (Quoted a)
 quoted p = P.choice
     [ quotedSpace '"'  DoubleQuoted
     , quotedSpace '\'' SingleQuoted

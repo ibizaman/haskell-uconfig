@@ -77,6 +77,7 @@ apply sm u = foldl
 data ConstructError
     = UnsupportedOperation T.Text T.Text
     | EmptyKey T.Text
+    deriving(Eq, Ord)
 
 instance Show ConstructError where
     show (UnsupportedOperation line op) =
@@ -88,10 +89,14 @@ instance Show ConstructError where
             <> "'"
     show (EmptyKey line) = T.unpack $ "Key cannot be empty in '" <> line <> "'"
 
-newtype ConstructResult = ConstructResult ([String], SyntaxModifier T.Text)
+instance P.ShowErrorComponent ConstructError where
+    showErrorComponent = show
+
+
+newtype ConstructResult = ConstructResult ([P.Error ConstructError], SyntaxModifier T.Text)
     deriving(Semigroup, Monoid)
 
-constructErrors :: ConstructResult -> [String]
+constructErrors :: ConstructResult -> [P.Error ConstructError]
 constructErrors (ConstructResult (errs, _)) = errs
 
 constructResult :: ConstructResult -> SyntaxModifier T.Text

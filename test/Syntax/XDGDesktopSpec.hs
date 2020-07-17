@@ -8,24 +8,33 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.Expectations.Pretty
                                                as HPP
 
-import qualified Data.Map.Strict               as Map
 import qualified Data.Text                     as T
+import           Data.Void                      ( Void )
 import qualified Parser                        as P
 import qualified Utils                         as U
 
 import           Syntax.XDGDesktop
 
 
-parsesLeft :: Show b => String -> P.Parser b -> T.Text -> H.SpecWith ()
+parsesLeft :: Show b => String -> P.Parser Void b -> T.Text -> H.SpecWith ()
 parsesLeft name p str = H.it name $ P.parse p str `HPP.shouldSatisfy` U.isLeft
 
 parsesRight
-    :: (Show a, Eq a) => String -> P.Parser a -> T.Text -> a -> H.SpecWith ()
+    :: (Show a, Eq a)
+    => String
+    -> P.Parser Void a
+    -> T.Text
+    -> a
+    -> H.SpecWith ()
 parsesRight name p str want =
     H.it name $ P.parse p str `HPP.shouldBe` Right want
 
 parsesRightMulti
-    :: (Show a, Eq a) => String -> P.Parser a -> [(T.Text, a)] -> H.SpecWith ()
+    :: (Show a, Eq a)
+    => String
+    -> P.Parser Void a
+    -> [(T.Text, a)]
+    -> H.SpecWith ()
 parsesRightMulti name p ps = sequence_ $ fmap
     (\(str', want') -> parsesRight (name <> "\n" <> T.unpack str') p str' want')
     ps
@@ -33,7 +42,7 @@ parsesRightMulti name p ps = sequence_ $ fmap
 roundtrip :: T.Text -> H.SpecWith ()
 roundtrip str =
     H.it "roundtrip"
-        $              fmap generate (P.parse parser str)
+        $ fmap generate (P.parse (parser :: P.Parser Void XDGDesktop) str)
         `HPP.shouldBe` Right str
 
 

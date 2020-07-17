@@ -10,6 +10,7 @@ import qualified Config                        as C
 import           Config.SystemdService          ( SystemdService(..) )
 import           Control.Monad                  ( when )
 import qualified Data.Text                     as T
+import           Data.Void                      ( Void )
 import qualified Args
 import qualified System.IO                     as SIO
 import qualified Syntax.XDGDesktop             as XDGDesktop
@@ -60,13 +61,13 @@ main = arguments >>= \case
                         putStrLn . T.unpack $ err
             errs -> do
                 putStrLn "Some UPDATEs could not be parsed:"
-                sequence_ $ putStrLn <$> errs
+                sequence_ $ print <$> errs
   where
     parseXDG :: T.Text -> (XDGDesktop.XDGDesktop -> IO ()) -> IO ()
     parseXDG file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
         (P.parse XDGDesktop.parser <$> (T.pack <$> SIO.hGetContents handle))
             >>= \case
-                    Left err ->
+                    Left (err :: P.Error Void) ->
                         putStrLn $ "Error while parsing file: " <> show err
                     Right parsed -> f parsed
 
@@ -78,7 +79,7 @@ main = arguments >>= \case
             <$> (T.pack <$> SIO.hGetContents handle)
             )
             >>= \case
-                    Left err ->
+                    Left (err :: P.Error Void) ->
                         putStrLn $ "Error while parsing file: " <> show err
                     Right (C.ParseError err) ->
                         putStrLn $ "Error while parsing file: " <> show err
