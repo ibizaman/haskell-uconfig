@@ -239,18 +239,39 @@ instance C.Config T.Text Description where
     unparser (Description d) = d
 
 
-newtype Documentation = Documentation T.Text
+data Documentation
+    = DocHTTP T.Text
+    | DocHTTPS T.Text
+    | DocFile T.Text
+    | DocInfo T.Text
+    | DocMan T.Text
     deriving (Eq, Show, Generic)
-    deriving (Semigroup, Monoid) via (Generically Documentation)
 
 instance Data.String.IsString Documentation where
-    fromString = Documentation . T.pack
+    fromString s = case C.parser $ T.pack s of
+        C.ParseSuccess d -> d
+        C.ParseError   _ -> DocFile $ T.pack s
 
 instance C.Config T.Text Documentation where
-    parser = fmap Documentation
-        . C.parseText (C.plain <$> C.spaced (C.quoted P.word))
+    parser = C.parseText
+        (C.plain <$> C.spaced
+            (C.quoted
+                (P.choice
+                    [ P.chunk "http://" >> DocHTTP <$> P.word
+                    , P.chunk "https://" >> DocHTTPS <$> P.word
+                    , P.chunk "file:" >> DocFile <$> P.word
+                    , P.chunk "info:" >> DocInfo <$> P.word
+                    , P.chunk "man:" >> DocMan <$> P.word
+                    ]
+                )
+            )
+        )
 
-    unparser (Documentation d) = d
+    unparser (DocHTTP  d) = "http://" <> d
+    unparser (DocHTTPS d) = "https://" <> d
+    unparser (DocFile  d) = "file:" <> d
+    unparser (DocInfo  d) = "info:" <> d
+    unparser (DocMan   d) = "man:" <> d
 
 
 newtype Target = Target T.Text
