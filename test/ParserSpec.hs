@@ -27,10 +27,10 @@ parse' = parse
 spec :: H.Spec
 spec = do
     H.describe "space" $ do
-        H.it "parses greedily" $ do
-            parse' space "  " `HPP.shouldBe` Right (2 :: Int)
-        H.it "parses greedily" $ do
-            parse' space "  ab" `HPP.shouldBe` Right (2 :: Int)
+        H.it "parses greedily" $ parse' space "  " `HPP.shouldBe` Right
+            (2 :: Int)
+        H.it "parses greedily" $ parse' space "  ab" `HPP.shouldBe` Right
+            (2 :: Int)
     H.describe "build" $ do
         H.it "empty list consumes nothing"
             $ parse' ((build [] :: Parser Void String) *> word) "abc"
@@ -44,45 +44,52 @@ spec = do
                                "abc"
             `HPP.shouldBe` Right ("xy", "c")
     H.describe "word" $ do
-        H.it "parses word" $ do
-            parse' word "abc" `HPP.shouldBe` Right "abc"
-        H.it "parses word without space" $ do
-            parse' word "abc  " `HPP.shouldBe` Right "abc"
-        H.it "parses word only letters and numbers" $ do
-            parse' word "abc123=" `HPP.shouldBe` Right "abc123"
+        H.it "parses word" $ parse' word "abc" `HPP.shouldBe` Right "abc"
+        H.it "parses word without space"
+            $              parse' word "abc  "
+            `HPP.shouldBe` Right "abc"
+        H.it "parses word only letters and numbers"
+            $              parse' word "abc123="
+            `HPP.shouldBe` Right "abc123"
     H.describe "wordsSepBy" $ do
-        H.it "parses one word" $ do
-            parse' (wordsSepBy word (chunk ".")) "abc"
-                `HPP.shouldBe` Right ("abc" :| [])
-        H.it "parses multiple words" $ do
-            parse' (wordsSepBy word (chunk ",")) "a,b,c"
-                `HPP.shouldBe` Right ("a" :| ["b", "c"])
+        H.it "parses one word"
+            $              parse' (wordsSepBy word (chunk ".")) "abc"
+            `HPP.shouldBe` Right ("abc" :| [])
+        H.it "parses multiple words"
+            $              parse' (wordsSepBy word (chunk ",")) "a,b,c"
+            `HPP.shouldBe` Right ("a" :| ["b", "c"])
     H.describe "words" $ do
-        H.it "parses one word" $ do
-            parse' words "abc" `HPP.shouldBe` Right "abc"
-        H.it "parses two words" $ do
-            parse' words "abc def" `HPP.shouldBe` Right "abc def"
-        H.it "parses two spaced words" $ do
-            parse' words "abc    def" `HPP.shouldBe` Right "abc def"
-        H.it "parses two spaced words with trailing space" $ do
-            parse' words "abc    def  " `HPP.shouldBe` Right "abc def"
-        H.it "parses multiple words" $ do
-            parse' words "ab cd ef" `HPP.shouldBe` Right "ab cd ef"
-        H.it "parses multiple spaced words" $ do
-            parse' words "ab  cd   ef" `HPP.shouldBe` Right "ab cd ef"
-        H.it "parses multiple spaced words with trailing space" $ do
-            parse' words "ab   cd   ef  " `HPP.shouldBe` Right "ab cd ef"
+        H.it "parses one word" $ parse' words "abc" `HPP.shouldBe` Right "abc"
+        H.it "parses two words" $ parse' words "abc def" `HPP.shouldBe` Right
+            "abc def"
+        H.it "parses two spaced words"
+            $              parse' words "abc    def"
+            `HPP.shouldBe` Right "abc def"
+        H.it "parses two spaced words with trailing space"
+            $              parse' words "abc    def  "
+            `HPP.shouldBe` Right "abc def"
+        H.it "parses multiple words"
+            $              parse' words "ab cd ef"
+            `HPP.shouldBe` Right "ab cd ef"
+        H.it "parses multiple spaced words"
+            $              parse' words "ab  cd   ef"
+            `HPP.shouldBe` Right "ab cd ef"
+        H.it "parses multiple spaced words with trailing space"
+            $              parse' words "ab   cd   ef  "
+            `HPP.shouldBe` Right "ab cd ef"
     H.describe "newlineSeparated" $ do
-        H.it "fails on empty input" $ do
-            parse' (newlineSeparated word) "" `HPP.shouldSatisfy` U.isLeft
-        H.it "parses one line" $ do
-            parse' (newlineSeparated word) "abc" `HPP.shouldBe` Right ["abc"]
-        H.it "parses multiple lines" $ do
-            parse' (newlineSeparated word) "a\nb\nc"
-                `HPP.shouldBe` Right ["a", "b", "c"]
-        H.it "parses multiple lines with trailing newline" $ do
-            parse' (newlineSeparated word) "a\nb\nc\n"
-                `HPP.shouldBe` Right ["a", "b", "c"]
+        H.it "fails on empty input"
+            $                   parse' (newlineSeparated word) ""
+            `HPP.shouldSatisfy` U.isLeft
+        H.it "parses one line"
+            $              parse' (newlineSeparated word) "abc"
+            `HPP.shouldBe` Right ["abc"]
+        H.it "parses multiple lines"
+            $              parse' (newlineSeparated word) "a\nb\nc"
+            `HPP.shouldBe` Right ["a", "b", "c"]
+        H.it "parses multiple lines with trailing newline"
+            $              parse' (newlineSeparated word) "a\nb\nc\n"
+            `HPP.shouldBe` Right ["a", "b", "c"]
     H.describe "number" $ do
         H.it "parses 1" $ parse' number "1" `HPP.shouldBe` Right (1 :: Int)
         H.it "parses big number"

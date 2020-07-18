@@ -35,9 +35,8 @@ parsesRightMulti
     -> P.Parser Void a
     -> [(T.Text, a)]
     -> H.SpecWith ()
-parsesRightMulti name p ps = sequence_ $ fmap
+parsesRightMulti name p = mapM_
     (\(str', want') -> parsesRight (name <> "\n" <> T.unpack str') p str' want')
-    ps
 
 roundtrip :: T.Text -> H.SpecWith ()
 roundtrip str =
@@ -85,9 +84,9 @@ spec = do
             parseValue
             "# my pre\n# comment\na=b   ; my\n# post comment"
             ( "a"
-            , "b   "
-            <# (newComment "#" [" my pre", " comment"])
-            #> (newComment ";" [" my", " post comment"])
+            , "b   " <# newComment "#" [" my pre", " comment"] #> newComment
+                ";"
+                [" my", " post comment"]
             )
 
     H.describe "parseSection" $ do
