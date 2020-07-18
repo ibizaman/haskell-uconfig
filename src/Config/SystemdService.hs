@@ -237,11 +237,19 @@ instance C.Config S.XDGDesktop SystemdService where
 data Unit = Unit
   { description :: EmptyDefault (S.Value Description)
   , documentation :: [S.Value Documentation]
-  , before :: ResettableList Target
-  , after :: ResettableList Target
   , wants :: ResettableList Target
   , requires :: ResettableList Target
+  , requisite :: ResettableList Target
+  , bindsTo :: ResettableList Target
+  , partOf :: ResettableList Target
   , conflicts :: ResettableList Target
+  , before :: ResettableList Target
+  , after :: ResettableList Target
+  , onFailure :: ResettableList Target
+  , propagatesReloadTo :: ResettableList Target
+  , reloadPropagatedFrom :: ResettableList Target
+  , joinsNamespaceOf :: ResettableList Target
+  , requiresMountsFor :: [S.Value T.Text]
   }
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically Unit)
@@ -251,21 +259,36 @@ instance C.Config S.Section Unit where
         Unit
             <$> (C.parser (S.getValue sec "Description"))
             <*> (C.parser (S.getValue sec "Documentation"))
-            <*> (C.parser (S.getValue sec "Before"))
-            <*> (C.parser (S.getValue sec "After"))
             <*> (C.parser (S.getValue sec "Wants"))
             <*> (C.parser (S.getValue sec "Requires"))
+            <*> (C.parser (S.getValue sec "Requisite"))
+            <*> (C.parser (S.getValue sec "BindsTo"))
+            <*> (C.parser (S.getValue sec "PartOf"))
             <*> (C.parser (S.getValue sec "Conflicts"))
+            <*> (C.parser (S.getValue sec "Before"))
+            <*> (C.parser (S.getValue sec "After"))
+            <*> (C.parser (S.getValue sec "OnFailure"))
+            <*> (C.parser (S.getValue sec "PropagatesReloadTo"))
+            <*> (C.parser (S.getValue sec "ReloadPropagatedFrom"))
+            <*> (C.parser (S.getValue sec "JoinsNamespaceOf"))
+            <*> (C.parser (S.getValue sec "RequiresMountsFor"))
 
     unparser u =
         mempty
-            /** ("Description"  , C.unparser $ description u)
-            /** ("Documentation", C.unparser $ documentation u)
-            /** ("Before"       , C.unparser $ before u)
-            /** ("After"        , C.unparser $ after u)
-            /** ("Wants"        , C.unparser $ wants u)
-            /** ("Requires"     , C.unparser $ requires u)
-            /** ("Conflicts"    , C.unparser $ conflicts u)
+            /** ("Description"       , C.unparser $ description u)
+            /** ("Documentation"     , C.unparser $ documentation u)
+            /** ("Wants"             , C.unparser $ wants u)
+            /** ("Requires"          , C.unparser $ requires u)
+            /** ("Requisite"         , C.unparser $ requisite u)
+            /** ("BindsTo"           , C.unparser $ bindsTo u)
+            /** ("PartOf"            , C.unparser $ partOf u)
+            /** ("Conflicts"         , C.unparser $ conflicts u)
+            /** ("Before"            , C.unparser $ before u)
+            /** ("After"             , C.unparser $ after u)
+            /** ("OnFailure"         , C.unparser $ onFailure u)
+            /** ("PropagatesReloadTo", C.unparser $ propagatesReloadTo u)
+            /** ("JoinsNamespaceOf"  , C.unparser $ joinsNamespaceOf u)
+            /** ("RequiresMountsFor" , C.unparser $ requiresMountsFor u)
 
 newtype Description = Description T.Text
     deriving (Eq, Show, Generic)
