@@ -40,12 +40,14 @@ module Syntax
     , newSection
     , unSection
     , (/*)
+    , (/*?)
     , (/*.)
     -- * Value
     , Value(value, enabled, preComments, postComments)
     , newValue
     , setEnabled
     , (/**)
+    , (/**?)
     , (/**.)
 
     -- * Comment
@@ -117,6 +119,25 @@ x /* (Just k, s) = x
     }
 x /* (Nothing, s) = x { firstSection = s }
 
+-- |Adds, replaces or deletes a 'Section' in a 'XDGDesktop'. The first
+-- argument of the tuple is a 'Maybe':
+--
+-- - A 'Just' means the 'Section' will be added to the 'sections' of
+-- the 'XDGDesktop'.
+-- - A 'Nothing' means the 'Section' will be added to the
+-- 'firstSection' of the 'XDGDesktop'.
+--
+-- If the second argument, the 'Section', is @== mempty@, then the
+-- 'Section' is deleted. Otherwise, the 'Section' is added.
+(/*?) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
+x /*? (Just k, s) = x
+    { sections = let (Sections ss) = sections x
+                 in  Sections $ if s == mempty
+                         then OM.alter (\_ -> Nothing) k ss
+                         else OM.insert k s ss
+    }
+x /*? (Nothing, s) = x { firstSection = s }
+
 -- |Alters a 'Section' in a 'XDGDesktop'. The first argument
 -- of the tuple is a 'Maybe':
 --
@@ -177,6 +198,11 @@ instance Monoid Section where
 
 (/**) :: Section -> (T.Text, [Value T.Text]) -> Section
 (Section s) /** (k, v) = Section $ OM.insertWith (flip (<>)) k v s
+
+(/**?) :: Section -> (T.Text, [Value T.Text]) -> Section
+(Section s) /**? (k, v) = Section $ if v == mempty
+    then OM.alter (\_ -> Nothing) k s
+    else OM.insertWith (flip (<>)) k v s
 
 (/**.)
     :: Section

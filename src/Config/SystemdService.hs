@@ -29,10 +29,12 @@ module Config.SystemdService
     -- |Base types
     , EmptyDefault(..)
     , SBool(svalue, stype)
+    , SBoolType(..)
     , sFalse
     , sTrue
     , setValue
     , setType
+    , List(..)
     , ResettableList(..)
     , ListElem(..)
     , computeResettableList
@@ -73,8 +75,9 @@ import           Generic.Data                   ( Generically(..) )
 import qualified Parser                        as P
 import qualified Config                        as C
 import qualified Syntax                        as S
-import           Syntax                         ( (/*)
+import           Syntax                         ( (/*?)
                                                 , (/**)
+                                                , (/**?)
                                                 )
 
 
@@ -111,6 +114,25 @@ instance C.Config T.Text v => C.Config [S.Value T.Text] (EmptyDefault (S.Value v
         Value x -> [fmap C.unparser x]
 
 
+newtype List a = List [S.Value [a]]
+    deriving (Eq, Show, Generic, Functor)
+    deriving (Semigroup, Monoid) via (Generically (List a))
+
+instance C.Config T.Text v => C.Config [S.Value T.Text] (List v) where
+    parser ls = List <$> C.mergeParseResult (fmap convert ls)
+      where
+        convert
+            :: C.Config T.Text v
+            => S.Value T.Text
+            -> C.ParseResult (S.Value [v])
+        convert v =
+            case (C.mergeParseResult $ fmap C.parser $ T.words $ S.value v) of
+                C.ParseError   e   -> C.ParseError e
+                C.ParseSuccess vs' -> C.ParseSuccess (v { S.value = vs' })
+
+    unparser (List ls) =
+        fmap (\v -> v { S.value = T.unwords $ fmap C.unparser $ S.value v }) ls
+
 newtype ResettableList a = ResettableList [S.Value (ListElem a)]
     deriving (Eq, Show, Generic, Functor)
     deriving (Semigroup, Monoid) via (Generically (ResettableList a))
@@ -132,7 +154,7 @@ instance C.Config T.Text v => C.Config T.Text (ListElem v) where
     unparser (ListElem t) = T.unwords $ fmap C.unparser t
 
 instance C.Config T.Text v => C.Config [S.Value T.Text] (ResettableList v) where
-    parser ls = ResettableList <$> C.mergeParseResult (fmap convert ls) -- (d $ c $ b $ a ls)
+    parser ls = ResettableList <$> C.mergeParseResult (fmap convert ls)
       where
         convert
             :: C.Config T.Text v
@@ -167,7 +189,7 @@ sFalse :: SBool
 sFalse = SBool False BTrue
 
 sTrue :: SBool
-sTrue = SBool False BTrue
+sTrue = SBool True BTrue
 
 instance Semigroup SBool where
     a <> b = b { svalue = svalue a || svalue b }
@@ -182,22 +204,17 @@ setValue :: Bool -> SBool -> SBool
 setValue v b = b { svalue = v }
 
 instance C.Config T.Text SBool where
-    parser = C.parseText
-        (P.choice
-            [ P.build
-                [ "true" $> SBool True BTrue
-                , "yes" $> SBool True BYes
-                , "on" $> SBool True BOn
-                , "1" $> SBool True BNum
-                ]
-            , P.build
-                [ "false" $> SBool False BTrue
-                , "no" $> SBool False BYes
-                , "off" $> SBool False BOn
-                , "0" $> SBool False BNum
-                ]
-            ]
-        )
+    parser = C.parseText $ P.choice
+        [ "true" $> SBool True BTrue
+        , "yes" $> SBool True BYes
+        , "on" $> SBool True BOn
+        , "1" $> SBool True BNum
+        , "false" $> SBool False BTrue
+        , "no" $> SBool False BYes
+        , "off" $> SBool False BOn
+        , "0" $> SBool False BNum
+        ]
+
     unparser v = case (stype v, svalue v) of
         (BTrue, True ) -> "true"
         (BTrue, False) -> "false"
@@ -228,15 +245,15 @@ instance C.Config S.XDGDesktop SystemdService where
 
     unparser s =
         mempty
-            /* (Just "Unit"   , C.unparser (unit s))
-            /* (Just "Install", C.unparser (install s))
-            /* (Just "Service", C.unparser (service s))
+            /*? (Just "Unit"   , C.unparser (unit s))
+            /*? (Just "Install", C.unparser (install s))
+            /*? (Just "Service", C.unparser (service s))
 
 -- |A Systemd [Unit] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BUnit%5D%20Section%20Options
 data Unit = Unit
   { description :: EmptyDefault (S.Value Description)
-  , documentation :: [S.Value Documentation]
+  , documentation :: List Documentation
   , wants :: ResettableList Target
   , requires :: ResettableList Target
   , requisite :: ResettableList Target
@@ -275,20 +292,20 @@ instance C.Config S.Section Unit where
 
     unparser u =
         mempty
-            /** ("Description"       , C.unparser $ description u)
-            /** ("Documentation"     , C.unparser $ documentation u)
-            /** ("Wants"             , C.unparser $ wants u)
-            /** ("Requires"          , C.unparser $ requires u)
-            /** ("Requisite"         , C.unparser $ requisite u)
-            /** ("BindsTo"           , C.unparser $ bindsTo u)
-            /** ("PartOf"            , C.unparser $ partOf u)
-            /** ("Conflicts"         , C.unparser $ conflicts u)
-            /** ("Before"            , C.unparser $ before u)
-            /** ("After"             , C.unparser $ after u)
-            /** ("OnFailure"         , C.unparser $ onFailure u)
-            /** ("PropagatesReloadTo", C.unparser $ propagatesReloadTo u)
-            /** ("JoinsNamespaceOf"  , C.unparser $ joinsNamespaceOf u)
-            /** ("RequiresMountsFor" , C.unparser $ requiresMountsFor u)
+            /**? ("Description"       , C.unparser $ description u)
+            /**? ("Documentation"     , C.unparser $ documentation u)
+            /**? ("Wants"             , C.unparser $ wants u)
+            /**? ("Requires"          , C.unparser $ requires u)
+            /**? ("Requisite"         , C.unparser $ requisite u)
+            /**? ("BindsTo"           , C.unparser $ bindsTo u)
+            /**? ("PartOf"            , C.unparser $ partOf u)
+            /**? ("Conflicts"         , C.unparser $ conflicts u)
+            /**? ("Before"            , C.unparser $ before u)
+            /**? ("After"             , C.unparser $ after u)
+            /**? ("OnFailure"         , C.unparser $ onFailure u)
+            /**? ("PropagatesReloadTo", C.unparser $ propagatesReloadTo u)
+            /**? ("JoinsNamespaceOf"  , C.unparser $ joinsNamespaceOf u)
+            /**? ("RequiresMountsFor" , C.unparser $ requiresMountsFor u)
 
 newtype Description = Description T.Text
     deriving (Eq, Show, Generic)
@@ -359,8 +376,8 @@ instance C.Config T.Text [Target] where
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-    { wantedBy :: [S.Value [Target]]
-    , requiredBy :: [S.Value [Target]]
+    { wantedBy :: ResettableList Target
+    , requiredBy :: ResettableList Target
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Install)
@@ -373,8 +390,8 @@ instance C.Config S.Section Install where
 
     unparser u =
         mempty
-            /** ("WantedBy"  , C.unparser $ wantedBy u)
-            /** ("RequiredBy", C.unparser $ requiredBy u)
+            /**? ("WantedBy"  , C.unparser $ wantedBy u)
+            /**? ("RequiredBy", C.unparser $ requiredBy u)
 
 
 -- |A Systemd [Service] record.
@@ -457,21 +474,21 @@ instance C.Config S.Section Service where
                         /** ("Type"     , pure "idle")
                         /** ("ExecStart", C.unparser exec)
         in  t
-                /** ("User"            , C.unparser $ user u)
-                /** ("Group"           , C.unparser $ group u)
-                /** ("WorkingDirectory", C.unparser $ workingDirectory u)
-                /** ("StandardOutput"  , C.unparser $ standardOutput u)
-                /** ("StandardError"   , C.unparser $ standardError u)
-                /** ("TasksMax"        , C.unparser $ tasksMax u)
-                /** ("Restart"         , C.unparser $ restart u)
-                /** ("PrivateTmp"      , C.unparser $ privateTmp u)
-                /** ("RemainAfterExit" , C.unparser $ remainAfterExit u)
-                /** ("ExecCondition"   , C.unparser $ execCondition u)
-                /** ("ExecStartPre"    , C.unparser $ execStartPre u)
-                /** ("ExecStartPost"   , C.unparser $ execStartPost u)
-                /** ("ExecReload"      , C.unparser $ execReload u)
-                /** ("ExecStop"        , C.unparser $ execStop u)
-                /** ("ExecStopPost"    , C.unparser $ execStopPost u)
+                /**? ("User"            , C.unparser $ user u)
+                /**? ("Group"           , C.unparser $ group u)
+                /**? ("WorkingDirectory", C.unparser $ workingDirectory u)
+                /**? ("StandardOutput"  , C.unparser $ standardOutput u)
+                /**? ("StandardError"   , C.unparser $ standardError u)
+                /**? ("TasksMax"        , C.unparser $ tasksMax u)
+                /**? ("Restart"         , C.unparser $ restart u)
+                /**? ("PrivateTmp"      , C.unparser $ privateTmp u)
+                /**? ("RemainAfterExit" , C.unparser $ remainAfterExit u)
+                /**? ("ExecCondition"   , C.unparser $ execCondition u)
+                /**? ("ExecStartPre"    , C.unparser $ execStartPre u)
+                /**? ("ExecStartPost"   , C.unparser $ execStartPost u)
+                /**? ("ExecReload"      , C.unparser $ execReload u)
+                /**? ("ExecStop"        , C.unparser $ execStop u)
+                /**? ("ExecStopPost"    , C.unparser $ execStopPost u)
 
 
 -- |A Systemd [Type] record.

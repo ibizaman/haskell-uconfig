@@ -16,6 +16,7 @@ import           Config.SystemdService
 import qualified Config                        as C
 import qualified Data.Text                     as T
 import qualified Syntax                        as S
+import qualified Syntax.XDGDesktop             as XDGDesktop
 import           Syntax                         ( (/*)
                                                 , (/**)
                                                 )
@@ -23,6 +24,19 @@ import           Syntax                         ( (/*)
 
 spec :: H.Spec
 spec = do
+    H.describe "parse sbool" $ do
+        H.it "parses false-byes"
+            $              C.parser ("no" :: T.Text)
+            `HPP.shouldBe` C.ParseSuccess (setType BYes sFalse)
+        H.it "parses true-byes"
+            $              C.parser ("yes" :: T.Text)
+            `HPP.shouldBe` C.ParseSuccess (setType BYes sTrue)
+        H.it "parses false-bnum"
+            $              C.parser ("0" :: T.Text)
+            `HPP.shouldBe` C.ParseSuccess (setValue False $ setType BNum sFalse)
+        H.it "parses true-bnum"
+            $              C.parser ("1" :: T.Text)
+            `HPP.shouldBe` C.ParseSuccess (setType BNum sTrue)
     H.describe "parse exec" $ do
         H.it "parses empty command"
             $              C.parser ("" :: T.Text)
@@ -130,7 +144,11 @@ spec = do
                                (mempty /** ("WantedBy", ["default.target"]))
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Install)
-                                   { wantedBy = [S.newValue ["default.target"]]
+                                   { wantedBy =
+                                       ResettableList
+                                           [ S.newValue
+                                                 $ ListElem ["default.target"]
+                                           ]
                                    }
                                )
         H.it "wantedBy and requiredBy"
@@ -143,14 +161,15 @@ spec = do
                                )
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Install)
-                                   { wantedBy   = S.newValue
-                                                      <$> [ ["default.target"]
-                                                          , ["1", "2", "3"]
-                                                          ]
-                                   , requiredBy = S.newValue
-                                                      <$> [ ["other.target"]
-                                                          , ["4"]
-                                                          ]
+                                   { wantedBy   = ResettableList
+                                       [ S.newValue
+                                           $ ListElem ["default.target"]
+                                       , S.newValue $ ListElem ["1", "2", "3"]
+                                       ]
+                                   , requiredBy = ResettableList
+                                       [ S.newValue $ ListElem ["other.target"]
+                                       , S.newValue $ ListElem ["4"]
+                                       ]
                                    }
                                )
     H.describe "parse full service" $ do
@@ -280,253 +299,197 @@ spec = do
                                                 $ TasksMaxInfinity
                                    }
                                }
---     H.describe "full-fledge services" $ do
---         H.it "aria2 web service"
---             $ C.parser [r|[Unit]
--- Description=Aria2 Web Service
--- After=network.target
---
--- [Service]
--- User=aria2
--- Group=aria2
--- WorkingDirectory=/opt/AriaNg-1.1.1
--- ExecStart=/usr/bin/darkhttpd . --port 6810
---
--- [Install]
--- WantedBy=default.target
--- |]
---             `HPP.shouldBe` C.ParseSuccess
---                                ((mempty :: SystemdService)
---                                    { unit    = mempty
---                                                    { description =
---                                                        "Aria2 Web Service"
---                                                    , after = ["network.target"]
---                                                    }
---                                    , service = mempty
---                                        { user             = "aria2"
---                                        , group            = "aria2"
---                                        , workingDirectory = "/opt/AriaNg-1.1.1"
---                                        , type_            = TSimple
---                                            "/usr/bin/darkhttpd . --port 6810"
---                                        }
---                                    , install = mempty
---                                                    { wantedBy =
---                                                        ["default.target"]
---                                                    }
---                                    }
---                                )
---         H.it "laptop mode tools"
---             $ C.parser [r|[Unit]
--- Description=Laptop Mode Tools
--- Documentation=man:laptop_mode(8) man:laptop-mode.conf(8)
--- Documentation=http://github.com/rickysarraf/laptop-mode-tools
---
--- [Service]
--- Type=oneshot
--- RemainAfterExit=yes
--- ExecStartPre=/bin/rm -f /var/run/laptop-mode-tools/enabled
--- ExecStartPre=/bin/rm -f /var/run/laptop-mode-tools/state
--- ExecStart=/usr/bin/laptop_mode init force
--- ExecStop=/usr/bin/laptop_mode init stop
--- ExecStopPost=/bin/rm -f /var/run/laptop-mode-tools/enabled
--- ExecStopPost=/bin/rm -f /var/run/laptop-mode-tools/state
--- ExecReload=/usr/bin/laptop_mode auto
--- StandardOutput=journal
--- StandardError=journal
--- TasksMax=infinity
---
--- [Install]
--- WantedBy=multi-user.target
--- |]
---             `HPP.shouldBe` C.ParseSuccess
---                                ((mempty :: SystemdService)
---                                    { unit    = mempty
---                                        { description   = "Laptop Mode Tools"
---                                        , documentation =
---
---                                            [ "man:laptop_mode(8)"
---                                            , "man:laptop-mode.conf(8)"
---                                            , "http://github.com/rickysarraf/laptop-mode-tools"
---                                            ]
---                                        }
---                                    , service = mempty
---                                        { type_           = TOneShot
---                                            ["/usr/bin/laptop_mode init force"]
---                                        , remainAfterExit =
---                                            Value $ S.newValue $ RemainAfterExit
---                                                True
---                                        , execStartPre    =
---                                            [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
---                                            , "/bin/rm -f /var/run/laptop-mode-tools/state"
---                                            ]
---                                        , execStop        =
---                                            ["/usr/bin/laptop_mode init stop"]
---                                        , execStopPost    =
---                                            [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
---                                            , "/bin/rm -f /var/run/laptop-mode-tools/state"
---                                            ]
---                                        , execReload      =
---                                            "/usr/bin/laptop_mode auto"
---                                        , standardOutput  = Value
---                                            $ S.newValue OJournal
---                                        , standardError   = Value
---                                            $ S.newValue OJournal
---                                        , tasksMax        = Value
---                                            $ S.newValue TasksMaxInfinity
---                                        }
---                                    , install = mempty
---                                                    { wantedBy =
---                                                        ["multi-user.target"]
---                                                    }
---                                    }
---                                )
---         H.it "network time service"
---             $ C.parser [r|[Unit]
--- Description=Network Time Service
--- After=network.target nss-lookup.target
--- Conflicts=systemd-timesyncd.service
---
--- [Service]
--- Type=forking
--- PrivateTmp=true
--- ExecStart=/usr/bin/ntpd -g -u ntp:ntp
--- Restart=always
---
--- [Install]
--- WantedBy=multi-user.target
--- |]
---             `HPP.shouldBe` C.ParseSuccess
---                                ((mempty :: SystemdService)
---                                    { unit    = mempty
---                                        { description = "Network Time Service"
---                                        , after       = [ "network.target"
---                                                        , "nss-lookup.target"
---                                                        ]
---                                        , conflicts   =
---
---                                            ["systemd-timesyncd.service"]
---                                        }
---                                    , service = mempty
---                                        { type_ = TForking
---                                            Empty
---                                            "/usr/bin/ntpd -g -u ntp:ntp"
---                                        , privateTmp =
---                                            Value $ S.newValue $ PrivateTmp True
---                                        , restart = Value $ S.newValue $ RAlways
---                                        }
---                                    , install = mempty
---                                                    { wantedBy =
---                                                        ["multi-user.target"]
---                                                    }
---                                    }
---                                )
---         H.it "networking for netctl profile %I"
---             $ C.parser [r|[Unit]
--- Description=Networking for netctl profile %I
--- Documentation=man:netctl.profile(5)
--- After=network-pre.target
--- Before=network.target netctl.service
--- Wants=network.target
---
--- [Service]
--- Type=notify
--- NotifyAccess=exec
--- RemainAfterExit=yes
--- ExecStart=/usr/lib/netctl/network start %I
--- ExecStop=/usr/lib/netctl/network stop %I
--- |]
---             `HPP.shouldBe` C.ParseSuccess
---                                ((mempty :: SystemdService)
---                                    { unit    = mempty
---                                        { description   =
---                                            "Networking for netctl profile %I"
---                                        , documentation =
---
---                                            ["man:netctl.profile(5)"]
---                                        , after         = ["network-pre.target"]
---                                        , before        = [ "network.target"
---                                                          , "netctl.service"
---                                                          ]
---                                        , wants         = ["network.target"]
---                                        }
---                                    , service = mempty
---                                        { type_           = TNotify
---                                            (S.newValue NAExec)
---                                            "/usr/lib/netctl/network start %I"
---                                        , remainAfterExit =
---                                            Value $ S.newValue $ RemainAfterExit
---                                                True
---                                        , execStop        =
---                                            ["/usr/lib/netctl/network stop %I"]
---                                        }
---                                    }
---                                )
+    H.describe "full-fledge services" $ do
+        fullRoundTrip
+            "aria2 web service"
+            [r|[Unit]
+Description=Aria2 Web Service
+After=network.target
 
---    H.describe "generate" $ do
---        H.it "with wrong path"
---            $ (C.generate $ C.fieldsTree [(C.Path ["hello"], "one")])
---            `HPP.shouldBe` ( [C.UnknownPath (C.Path ["hello"])]
---                           , Nothing :: Maybe SystemdService
---                           )
---        H.it "with description"
---            $              (C.generate $ C.fieldsTree
---                               [(C.Path ["Unit", "Description"], "my description")]
---                           )
---
---            `HPP.shouldBe` ( []
---                           , Just $ mempty
---                               { unit = mempty
---                                   { description = Value
---                                       $ Description "my description"
---                                   }
---                               }
---                           )
---        H.it "with description and after"
---            $              (C.generate $ C.fieldsTree
---                               [ (C.Path ["Unit", "Description"], "my description")
---                               , (C.Path ["Unit", "After"], "target1")
---                               , (C.Path ["Unit", "After"], "target2")
---                               ]
---                           )
---            `HPP.shouldBe` ( []
---                           , Just $ mempty
---                               { unit = mempty
---                                   { description = Value
---                                       $ Description "my description"
---                                   , after       = [ Target "target1"
---                                                   , Target "target2"
---                                                   ]
---                                   }
---                               }
---                           )
---        --H.it "with install"
---        --    $              (C.generate $ C.fieldsTree
---        --                       [ (C.Path ["Install", "WantedBy"], "me")
---        --                       , (C.Path ["Install", "RequiredBy"], "target1 target2")
---        --                       ]
---        --                   )
---        --    `HPP.shouldBe` ( []
---        --                   , Just $ mempty
---        --                       { install = mempty
---        --                                       { wantedBy   = [Target "me"]
---        --                                       , requiredBy = [ Target "target1"
---        --                                                      , Target "target2"
---        --                                                      ]
---        --                                       }
---        --                       }
---        --                   )
---        --H.it "with service"
---        --    $              (C.generate $ C.fieldsTree
---        --                       [ (C.Path ["Service", "User"]     , "me")
---        --                       , (C.Path ["Service", "ExecStart"], "cmd")
---        --                       ]
---        --                   )
---        --    `HPP.shouldBe` ( []
---        --                   , Just $ mempty
---        --                       { service = mempty
---        --                           { type_ = TSimple
---        --                                         (mempty { command = "cmd" })
---        --                           , user  = Value $ User "me"
---        --                           }
---        --                       }
---        --                   )
+[Service]
+User=aria2
+Group=aria2
+WorkingDirectory=/opt/AriaNg-1.1.1
+Type=simple
+ExecStart=/usr/bin/darkhttpd . --port 6810
+
+[Install]
+WantedBy=default.target|]
+            (mempty
+                { unit    = mempty
+                    { description = Value "Aria2 Web Service"
+                    , after       = ResettableList
+                                        [S.newValue $ ListElem ["network.target"]]
+                    }
+                , service = mempty
+                    { user             = Value "aria2"
+                    , group            = Value "aria2"
+                    , workingDirectory = Value "/opt/AriaNg-1.1.1"
+                    , type_ = TSimple "/usr/bin/darkhttpd . --port 6810"
+                    }
+                , install = mempty
+                    { wantedBy = ResettableList
+                                     [S.newValue $ ListElem ["default.target"]]
+                    }
+                }
+            )
+        fullRoundTrip
+            "laptop mode tools"
+            [r|[Unit]
+Description=Laptop Mode Tools
+Documentation=man:laptop_mode(8) man:laptop-mode.conf(8)
+Documentation=http://github.com/rickysarraf/laptop-mode-tools
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/rm -f /var/run/laptop-mode-tools/enabled
+ExecStartPre=/bin/rm -f /var/run/laptop-mode-tools/state
+ExecStart=/usr/bin/laptop_mode init force
+ExecStop=/usr/bin/laptop_mode init stop
+ExecStopPost=/bin/rm -f /var/run/laptop-mode-tools/enabled
+ExecStopPost=/bin/rm -f /var/run/laptop-mode-tools/state
+ExecReload=/usr/bin/laptop_mode auto
+StandardOutput=journal
+StandardError=journal
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target|]
+            (mempty
+                { unit    = mempty
+                    { description   = Value "Laptop Mode Tools"
+                    , documentation = List
+                        [ S.newValue
+                            [ DocMan "laptop_mode(8)"
+                            , DocMan "laptop-mode.conf(8)"
+                            ]
+                        , S.newValue
+                            [DocHTTP "github.com/rickysarraf/laptop-mode-tools"]
+                        ]
+                    }
+                , service = mempty
+                    { type_ = TOneShot ["/usr/bin/laptop_mode init force"]
+                    , remainAfterExit = Value $ S.newValue $ RemainAfterExit
+                                            (setType BYes sTrue)
+                    , execStartPre    =
+                        [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
+                        , "/bin/rm -f /var/run/laptop-mode-tools/state"
+                        ]
+                    , execStop        = ["/usr/bin/laptop_mode init stop"]
+                    , execStopPost    =
+                        [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
+                        , "/bin/rm -f /var/run/laptop-mode-tools/state"
+                        ]
+                    , execReload      = Value "/usr/bin/laptop_mode auto"
+                    , standardOutput  = Value $ S.newValue OJournal
+                    , standardError   = Value $ S.newValue OJournal
+                    , tasksMax        = Value $ S.newValue TasksMaxInfinity
+                    }
+                , install = mempty
+                    { wantedBy = ResettableList
+                        [S.newValue $ ListElem ["multi-user.target"]]
+                    }
+                }
+            )
+        fullRoundTrip
+            "network time service"
+            [r|[Unit]
+Description=Network Time Service
+After=network.target nss-lookup.target
+Conflicts=systemd-timesyncd.service
+
+[Service]
+Type=forking
+PrivateTmp=true
+ExecStart=/usr/bin/ntpd -g -u ntp:ntp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target|]
+            (mempty
+                { unit    = mempty
+                    { description = Value "Network Time Service"
+                    , after       =
+                        ResettableList
+                            [ S.newValue $ ListElem
+                                  ["network.target", "nss-lookup.target"]
+                            ]
+                    , conflicts   = ResettableList
+                        [S.newValue $ ListElem ["systemd-timesyncd.service"]]
+                    }
+                , service = mempty
+                                { type_      = TForking
+                                                   Empty
+                                                   "/usr/bin/ntpd -g -u ntp:ntp"
+                                , privateTmp = Value
+                                               $ S.newValue
+                                               $ PrivateTmp
+                                               $ setType BTrue sTrue
+                                , restart    = Value $ S.newValue $ RAlways
+                                }
+                , install = mempty
+                    { wantedBy = ResettableList
+                        [S.newValue $ ListElem ["multi-user.target"]]
+                    }
+                }
+            )
+        fullRoundTrip
+            "networking for netctl profile %I"
+            [r|[Unit]
+Description=Networking for netctl profile %I
+Documentation=man:netctl.profile(5)
+After=network-pre.target
+Before=network.target netctl.service
+Wants=network.target
+
+[Service]
+Type=notify
+NotifyAccess=exec
+RemainAfterExit=yes
+ExecStart=/usr/lib/netctl/network start %I
+ExecStop=/usr/lib/netctl/network stop %I|]
+            (mempty
+                { unit    = mempty
+                    { description   = Value "Networking for netctl profile %I"
+                    , documentation = List
+                        [S.newValue [DocMan "netctl.profile(5)"]]
+                    , after         = ResettableList
+                                          [S.newValue $ ListElem ["network-pre.target"]]
+                    , before        =
+                        ResettableList
+                            [ S.newValue $ ListElem
+                                  ["network.target", "netctl.service"]
+                            ]
+                    , wants         = ResettableList
+                                          [S.newValue $ ListElem ["network.target"]]
+                    }
+                , service = mempty
+                                { type_ = TNotify
+                                              (Value $ S.newValue NAExec)
+                                              "/usr/lib/netctl/network start %I"
+                                , remainAfterExit = Value
+                                                    $ S.newValue
+                                                    $ RemainAfterExit
+                                                    $ setType BYes sTrue
+                                , execStop = ["/usr/lib/netctl/network stop %I"]
+                                }
+                }
+            )
+
+fullRoundTrip :: String -> T.Text -> SystemdService -> H.Spec
+fullRoundTrip name t v = do
+    let intermediate = (C.parser t) :: C.ParseResult S.XDGDesktop
+
+        follow       = case intermediate of
+            C.ParseError   _ -> id
+            C.ParseSuccess i -> \x -> x `XDGDesktop.followOrderFrom` i
+
+        p :: C.ParseResult SystemdService
+        p = intermediate >>= C.parser
+
+        g :: SystemdService -> T.Text
+        g x = C.unparser $ follow $ ((C.unparser x) :: S.XDGDesktop)
+
+    H.it (name <> " - parse") $ p `HPP.shouldBe` C.ParseSuccess v
+    H.it (name <> " - generate") $ g v `HPP.shouldBe` t

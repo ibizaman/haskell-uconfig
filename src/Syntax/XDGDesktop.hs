@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-|
 Module      : Syntax.XDGDesktop
 Description : XDG Desktop Syntax Parser and Generator
@@ -42,6 +43,11 @@ import           Syntax
 import qualified Config                        as C
 import qualified OrderedMap                    as OM
 import qualified Parser                        as P
+
+
+instance C.Config T.Text XDGDesktop where
+    parser   = C.parseText parser
+    unparser = generate
 
 
 commentStart :: Ord e => P.Parser e T.Text

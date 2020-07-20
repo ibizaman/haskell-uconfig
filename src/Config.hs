@@ -104,6 +104,9 @@ data ParseError
                            -- constructor.
     deriving(Show, Eq, Ord)
 
+instance P.ShowErrorComponent ParseError where
+    showErrorComponent = show
+
 instance Semigroup v => Semigroup (ParseResult v) where
     (ParseSuccess a) <> (ParseSuccess b) = ParseSuccess $ a <> b
     (ParseError   e) <> _                = ParseError e
