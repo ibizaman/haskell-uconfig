@@ -27,13 +27,19 @@ module Config.SystemdService
       SystemdService(..)
 
     -- |Base types
-    , EmptyDefault(..)
     , SBool(svalue, stype)
     , SBoolType(..)
     , sFalse
     , sTrue
     , setValue
     , setType
+    , One
+    , none
+    , one
+    , disableAll
+    , appendOne
+    , getAllFromOne
+    , Words(..)
     , List(..)
     , ResettableList(..)
     , ListElem(..)
@@ -59,6 +65,7 @@ module Config.SystemdService
     , TasksMax(..)
     , PrivateTmp(..)
     , Restart(..)
+    , KillMode(..)
     )
 where
 
@@ -81,40 +88,47 @@ import           Syntax                         ( (/*?)
                                                 )
 
 
--- |Value that can be empty. It's Maybe with a different Semigroup
--- implementation.
-data EmptyDefault a = Empty | Value a
-    deriving(Eq, Show)
+-- |Value can be either present or not. There can be at most one
+-- enabled value but there can be any number of disabled one.
+newtype One a = One [S.Value a]
+    deriving (Eq, Show, Generic, Functor)
+    deriving (Semigroup, Monoid) via (Generically (One a))
 
-instance Semigroup (EmptyDefault x) where
-    Value a <> _       = Value a
-    _       <> Value b = Value b
-    _       <> _       = Empty
+none :: One a
+none = One []
 
-instance Monoid (EmptyDefault x) where
-    mempty = Empty
+one :: S.Value a -> One a
+one v = One [v]
 
-instance Functor EmptyDefault where
-    fmap f  (Value m) = Value (f m)
-    fmap _f Empty     = Empty
+disableAll :: One a -> One a
+disableAll (One vs) = One $ S.setEnabled False <$> vs
 
-instance Applicative EmptyDefault where
-    pure = Value
-    Value f <*> m  = fmap f m
-    Empty   <*> _m = Empty
+appendOne :: S.Value a -> One a -> One a
+appendOne v vs =
+    let (One vs') = if S.enabled v then disableAll vs else vs
+    in  One $ vs' <> [v]
 
-instance C.Config T.Text v => C.Config [S.Value T.Text] (EmptyDefault (S.Value v)) where
-    parser p = C.parser p >>= \case
-        []  -> C.ParseSuccess Empty
-        [x] -> C.ParseSuccess (Value x)
-        _   -> C.ParseError (C.MultipleFound "")
+getAllFromOne :: One a -> [S.Value a]
+getAllFromOne (One vs) = vs
 
-    unparser = \case
-        Empty   -> []
-        Value x -> [fmap C.unparser x]
+instance C.Config T.Text v => C.Config [S.Value T.Text] (One v) where
+    parser vs =
+        One <$> (C.mergeParseResult $ fmap (C.liftValue . fmap C.parser) vs)
+
+    unparser (One vs) = fmap (fmap C.unparser) vs
 
 
-newtype List a = List [S.Value [a]]
+newtype Words a = Words [a]
+    deriving (Eq, Show, Generic, Functor)
+    deriving (Semigroup, Monoid) via (Generically (Words a))
+
+instance C.Config T.Text v => C.Config T.Text (Words v) where
+    parser vs = Words <$> (C.mergeParseResult $ fmap C.parser $ T.words vs)
+
+    unparser (Words vs) = T.unwords $ fmap C.unparser vs
+
+
+newtype List a = List [S.Value a]
     deriving (Eq, Show, Generic, Functor)
     deriving (Semigroup, Monoid) via (Generically (List a))
 
@@ -122,16 +136,12 @@ instance C.Config T.Text v => C.Config [S.Value T.Text] (List v) where
     parser ls = List <$> C.mergeParseResult (fmap convert ls)
       where
         convert
-            :: C.Config T.Text v
-            => S.Value T.Text
-            -> C.ParseResult (S.Value [v])
-        convert v =
-            case (C.mergeParseResult $ fmap C.parser $ T.words $ S.value v) of
-                C.ParseError   e   -> C.ParseError e
-                C.ParseSuccess vs' -> C.ParseSuccess (v { S.value = vs' })
+            :: C.Config T.Text v => S.Value T.Text -> C.ParseResult (S.Value v)
+        convert v = case C.parser $ S.value v of
+            C.ParseError   e   -> C.ParseError e
+            C.ParseSuccess vs' -> C.ParseSuccess (v { S.value = vs' })
 
-    unparser (List ls) =
-        fmap (\v -> v { S.value = T.unwords $ fmap C.unparser $ S.value v }) ls
+    unparser (List ls) = fmap (\v -> v { S.value = C.unparser $ S.value v }) ls
 
 newtype ResettableList a = ResettableList [S.Value (ListElem a)]
     deriving (Eq, Show, Generic, Functor)
@@ -141,17 +151,17 @@ computeResettableList :: [ListElem a] -> [a]
 computeResettableList = foldr f []
   where
     f ListReset    _  = []
-    f (ListElem v) vs = v <> vs
+    f (ListElem v) vs = v : vs
 
-data ListElem a = ListReset | ListElem [a]
+data ListElem a = ListReset | ListElem a
     deriving(Eq, Show, Functor)
 
 instance C.Config T.Text v => C.Config T.Text (ListElem v) where
     parser "" = C.ParseSuccess ListReset
-    parser t  = ListElem <$> (C.mergeParseResult $ fmap C.parser $ T.words t)
+    parser t  = ListElem <$> (C.parser t)
 
     unparser ListReset    = ""
-    unparser (ListElem t) = T.unwords $ fmap C.unparser t
+    unparser (ListElem t) = C.unparser t
 
 instance C.Config T.Text v => C.Config [S.Value T.Text] (ResettableList v) where
     parser ls = ResettableList <$> C.mergeParseResult (fmap convert ls)
@@ -252,21 +262,21 @@ instance C.Config S.XDGDesktop SystemdService where
 -- |A Systemd [Unit] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BUnit%5D%20Section%20Options
 data Unit = Unit
-  { description :: EmptyDefault (S.Value Description)
-  , documentation :: List Documentation
-  , wants :: ResettableList Target
-  , requires :: ResettableList Target
-  , requisite :: ResettableList Target
-  , bindsTo :: ResettableList Target
-  , partOf :: ResettableList Target
-  , conflicts :: ResettableList Target
-  , before :: ResettableList Target
-  , after :: ResettableList Target
-  , onFailure :: ResettableList Target
-  , propagatesReloadTo :: ResettableList Target
-  , reloadPropagatedFrom :: ResettableList Target
-  , joinsNamespaceOf :: ResettableList Target
-  , requiresMountsFor :: [S.Value T.Text]
+  { description :: One Description
+  , documentation :: List (Words Documentation)
+  , wants :: ResettableList (Words Target)
+  , requires :: ResettableList (Words Target)
+  , requisite :: ResettableList (Words Target)
+  , bindsTo :: ResettableList (Words Target)
+  , partOf :: ResettableList (Words Target)
+  , conflicts :: ResettableList (Words Target)
+  , before :: ResettableList (Words Target)
+  , after :: ResettableList (Words Target)
+  , onFailure :: ResettableList (Words Target)
+  , propagatesReloadTo :: ResettableList (Words Target)
+  , reloadPropagatedFrom :: ResettableList (Words Target)
+  , joinsNamespaceOf :: ResettableList (Words Target)
+  , requiresMountsFor :: List T.Text
   }
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically Unit)
@@ -376,8 +386,8 @@ instance C.Config T.Text [Target] where
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-    { wantedBy :: ResettableList Target
-    , requiredBy :: ResettableList Target
+    { wantedBy :: ResettableList (Words Target)
+    , requiredBy :: ResettableList (Words Target)
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Install)
@@ -398,22 +408,23 @@ instance C.Config S.Section Install where
 -- https://www.freedesktop.org/software/systemd/man/systemd.service.html#Options
 -- https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=N
 data Service = Service
-    { execCondition :: [S.Value Exec]
-    , execStartPre :: [S.Value Exec]
-    , execStartPost :: [S.Value Exec]
+    { execCondition :: List Exec
+    , execStartPre :: List Exec
+    , execStartPost :: List Exec
     , type_ :: Type
-    , execReload :: EmptyDefault (S.Value Exec)
-    , execStop :: [S.Value Exec]
-    , execStopPost :: [S.Value Exec]
-    , remainAfterExit :: EmptyDefault (S.Value RemainAfterExit)
-    , user :: EmptyDefault (S.Value User)
-    , group :: EmptyDefault (S.Value Group)
-    , workingDirectory :: EmptyDefault (S.Value WorkingDirectory)
-    , standardOutput :: EmptyDefault (S.Value Output)
-    , standardError :: EmptyDefault (S.Value Output)
-    , tasksMax :: EmptyDefault (S.Value TasksMax)
-    , restart :: EmptyDefault (S.Value Restart)
-    , privateTmp :: EmptyDefault (S.Value PrivateTmp)
+    , execReload :: List Exec
+    , execStop :: List Exec
+    , execStopPost :: List Exec
+    , remainAfterExit :: One RemainAfterExit
+    , user :: One User
+    , group :: One Group
+    , workingDirectory :: One WorkingDirectory
+    , standardOutput :: One Output
+    , standardError :: One Output
+    , tasksMax :: One TasksMax
+    , restart :: One Restart
+    , privateTmp :: One PrivateTmp
+    , killMode :: One KillMode
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Service)
@@ -437,6 +448,7 @@ instance C.Config S.Section Service where
             <*> (C.parser (S.getValue sec "TasksMax"))
             <*> (C.parser (S.getValue sec "Restart"))
             <*> (C.parser (S.getValue sec "PrivateTmp"))
+            <*> (C.parser (S.getValue sec "KillMode"))
 
     unparser u =
         let
@@ -489,6 +501,7 @@ instance C.Config S.Section Service where
                 /**? ("ExecReload"      , C.unparser $ execReload u)
                 /**? ("ExecStop"        , C.unparser $ execStop u)
                 /**? ("ExecStopPost"    , C.unparser $ execStopPost u)
+                /**? ("KillMode"        , C.unparser $ killMode u)
 
 
 -- |A Systemd [Type] record.
@@ -497,10 +510,10 @@ data Type
     = TNothing
     | TSimple (S.Value Exec)
     | TExec (S.Value Exec)
-    | TForking (EmptyDefault (S.Value PIDFile)) (S.Value Exec)
+    | TForking (One PIDFile) (S.Value Exec)
     | TOneShot [S.Value Exec]
     | TDBus (S.Value BusName) (S.Value Exec)
-    | TNotify (EmptyDefault (S.Value NotifyAccess)) (S.Value Exec)
+    | TNotify (One NotifyAccess) (S.Value Exec)
     | TIdle (S.Value Exec)
     deriving (Eq, Show)
 
@@ -784,3 +797,30 @@ instance C.Config T.Text PrivateTmp where
     parser = fmap PrivateTmp <$> C.parser
 
     unparser (PrivateTmp b) = C.unparser b
+
+
+data KillMode
+    = KMControlGroup
+    | KMMixed
+    | KMProcess
+    | KMNone
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last KillMode))
+
+instance Monoid KillMode where
+    mempty = KMNone
+
+instance C.Config T.Text KillMode where
+    parser = C.parseText
+        (P.choice
+            [ P.chunk "control-group" $> KMControlGroup
+            , P.chunk "mixed" $> KMMixed
+            , P.chunk "process" $> KMProcess
+            , P.chunk "none" $> KMNone
+            ]
+        )
+
+    unparser KMControlGroup = "control-group"
+    unparser KMMixed        = "mixed"
+    unparser KMProcess      = "process"
+    unparser KMNone         = "none"

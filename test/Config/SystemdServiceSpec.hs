@@ -100,13 +100,13 @@ spec = do
                                (mempty /** ("Before", ["one two"]) /** ("Before", ["three"]))
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Unit)
-                                   { before =
-                                       ResettableList
-                                           (   S.newValue
-                                           <$> [ ListElem ["one", "two"]
-                                               , ListElem ["three"]
-                                               ]
-                                           )
+                                   { before = ResettableList
+                                       ([ S.newValue $ ListElem $ Words
+                                            ["one", "two"]
+                                        , S.newValue $ ListElem $ Words
+                                            ["three"]
+                                        ]
+                                       )
                                    }
                                )
         H.it "with reset before"
@@ -119,11 +119,11 @@ spec = do
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Unit)
                                    { before = ResettableList
-                                       (   S.newValue
-                                       <$> [ ListElem ["one", "two"]
-                                           , ListReset
-                                           , ListElem ["four"]
-                                           ]
+                                       ([ S.newValue $ ListElem $ Words
+                                            ["one", "two"]
+                                        , S.newValue ListReset
+                                        , S.newValue $ ListElem $ Words ["four"]
+                                        ]
                                        )
                                    }
                                )
@@ -131,9 +131,9 @@ spec = do
             $              (C.parser :: S.Section -> C.ParseResult Unit)
                                (mempty /** ("Description", ["my service"]))
             `HPP.shouldBe` C.ParseSuccess
-                               ((mempty :: Unit)
-                                   { description = Value "my service"
-                                   }
+                               ((mempty :: Unit) { description = one
+                                                     "my service"
+                                                 }
                                )
     H.describe "parseInstall" $ do
         H.it "empty"
@@ -146,8 +146,8 @@ spec = do
                                ((mempty :: Install)
                                    { wantedBy =
                                        ResettableList
-                                           [ S.newValue
-                                                 $ ListElem ["default.target"]
+                                           [ S.newValue $ ListElem $ Words
+                                                 ["default.target"]
                                            ]
                                    }
                                )
@@ -162,13 +162,15 @@ spec = do
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: Install)
                                    { wantedBy   = ResettableList
-                                       [ S.newValue
-                                           $ ListElem ["default.target"]
-                                       , S.newValue $ ListElem ["1", "2", "3"]
+                                       [ S.newValue $ ListElem $ Words
+                                           ["default.target"]
+                                       , S.newValue $ ListElem $ Words
+                                           ["1", "2", "3"]
                                        ]
                                    , requiredBy = ResettableList
-                                       [ S.newValue $ ListElem ["other.target"]
-                                       , S.newValue $ ListElem ["4"]
+                                       [ S.newValue $ ListElem $ Words
+                                           ["other.target"]
+                                       , S.newValue $ ListElem $ Words ["4"]
                                        ]
                                    }
                                )
@@ -187,8 +189,7 @@ spec = do
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: SystemdService)
                                    { unit    = mempty
-                                                   { description = Value
-                                                                       "my service"
+                                                   { description = one "my service"
                                                    }
                                    , service = mempty { type_ = TSimple "my cmd"
                                                       }
@@ -205,8 +206,7 @@ spec = do
             `HPP.shouldBe` C.ParseSuccess
                                ((mempty :: SystemdService)
                                    { unit    = mempty
-                                                   { description = Value
-                                                                       "my service"
+                                                   { description = one "my service"
                                                    }
                                    , service = mempty { type_ = TSimple "my cmd"
                                                       }
@@ -231,10 +231,9 @@ spec = do
                                    { type_            = TSimple
 
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , user             = Value "aria2"
-                                   , group            = Value "aria2"
-                                   , workingDirectory = Value
-                                                            "/opt/AriaNg-1.1.1"
+                                   , user             = one "aria2"
+                                   , group            = one "aria2"
+                                   , workingDirectory = one "/opt/AriaNg-1.1.1"
                                    }
                                }
         H.it "with service and tasksmax=10"
@@ -253,7 +252,7 @@ spec = do
                                { service = mempty
                                    { type_    = TSimple
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , tasksMax = Value $ S.newValue $ TasksMax 10
+                                   , tasksMax = one $ S.newValue $ TasksMax 10
                                    }
                                }
         H.it "with service and tasksmax=infinity"
@@ -272,7 +271,7 @@ spec = do
                                { service = mempty
                                    { type_    = TSimple
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , tasksMax = Value
+                                   , tasksMax = one
                                                 $ S.newValue
                                                 $ TasksMaxInfinity
                                    }
@@ -293,7 +292,7 @@ spec = do
                                { service = mempty
                                    { type_    = TSimple
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , tasksMax = Value
+                                   , tasksMax = one
                                                 $ S.setEnabled False
                                                 $ S.newValue
                                                 $ TasksMaxInfinity
@@ -317,19 +316,19 @@ ExecStart=/usr/bin/darkhttpd . --port 6810
 WantedBy=default.target|]
             (mempty
                 { unit    = mempty
-                    { description = Value "Aria2 Web Service"
+                    { description = one "Aria2 Web Service"
                     , after       = ResettableList
-                                        [S.newValue $ ListElem ["network.target"]]
+                        [S.newValue $ ListElem $ Words ["network.target"]]
                     }
                 , service = mempty
-                    { user             = Value "aria2"
-                    , group            = Value "aria2"
-                    , workingDirectory = Value "/opt/AriaNg-1.1.1"
+                    { user             = one "aria2"
+                    , group            = one "aria2"
+                    , workingDirectory = one "/opt/AriaNg-1.1.1"
                     , type_ = TSimple "/usr/bin/darkhttpd . --port 6810"
                     }
                 , install = mempty
                     { wantedBy = ResettableList
-                                     [S.newValue $ ListElem ["default.target"]]
+                        [S.newValue $ ListElem $ Words ["default.target"]]
                     }
                 }
             )
@@ -358,37 +357,43 @@ TasksMax=infinity
 WantedBy=multi-user.target|]
             (mempty
                 { unit    = mempty
-                    { description   = Value "Laptop Mode Tools"
+                    { description   = one "Laptop Mode Tools"
                     , documentation = List
                         [ S.newValue
-                            [ DocMan "laptop_mode(8)"
-                            , DocMan "laptop-mode.conf(8)"
-                            ]
-                        , S.newValue
+                            $ Words
+                                  [ DocMan "laptop_mode(8)"
+                                  , DocMan "laptop-mode.conf(8)"
+                                  ]
+                        , S.newValue $ Words
                             [DocHTTP "github.com/rickysarraf/laptop-mode-tools"]
                         ]
                     }
                 , service = mempty
                     { type_ = TOneShot ["/usr/bin/laptop_mode init force"]
-                    , remainAfterExit = Value $ S.newValue $ RemainAfterExit
+                    , remainAfterExit = one $ S.newValue $ RemainAfterExit
                                             (setType BYes sTrue)
-                    , execStartPre    =
-                        [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
-                        , "/bin/rm -f /var/run/laptop-mode-tools/state"
+                    , execStartPre    = List
+                        [ S.newValue
+                            "/bin/rm -f /var/run/laptop-mode-tools/enabled"
+                        , S.newValue
+                            "/bin/rm -f /var/run/laptop-mode-tools/state"
                         ]
-                    , execStop        = ["/usr/bin/laptop_mode init stop"]
-                    , execStopPost    =
-                        [ "/bin/rm -f /var/run/laptop-mode-tools/enabled"
-                        , "/bin/rm -f /var/run/laptop-mode-tools/state"
+                    , execStop        = List
+                        [S.newValue "/usr/bin/laptop_mode init stop"]
+                    , execStopPost    = List
+                        [ S.newValue
+                            "/bin/rm -f /var/run/laptop-mode-tools/enabled"
+                        , S.newValue
+                            "/bin/rm -f /var/run/laptop-mode-tools/state"
                         ]
-                    , execReload      = Value "/usr/bin/laptop_mode auto"
-                    , standardOutput  = Value $ S.newValue OJournal
-                    , standardError   = Value $ S.newValue OJournal
-                    , tasksMax        = Value $ S.newValue TasksMaxInfinity
+                    , execReload = List [S.newValue "/usr/bin/laptop_mode auto"]
+                    , standardOutput  = one $ S.newValue OJournal
+                    , standardError   = one $ S.newValue OJournal
+                    , tasksMax        = one $ S.newValue TasksMaxInfinity
                     }
                 , install = mempty
                     { wantedBy = ResettableList
-                        [S.newValue $ ListElem ["multi-user.target"]]
+                        [S.newValue $ ListElem $ Words ["multi-user.target"]]
                     }
                 }
             )
@@ -409,28 +414,30 @@ Restart=always
 WantedBy=multi-user.target|]
             (mempty
                 { unit    = mempty
-                    { description = Value "Network Time Service"
-                    , after       =
+                    { description = one "Network Time Service"
+                    , after       = ResettableList
+                                        [ S.newValue $ ListElem $ Words
+                                              ["network.target", "nss-lookup.target"]
+                                        ]
+                    , conflicts   =
                         ResettableList
-                            [ S.newValue $ ListElem
-                                  ["network.target", "nss-lookup.target"]
+                            [ S.newValue $ ListElem $ Words
+                                  ["systemd-timesyncd.service"]
                             ]
-                    , conflicts   = ResettableList
-                        [S.newValue $ ListElem ["systemd-timesyncd.service"]]
                     }
                 , service = mempty
                                 { type_      = TForking
-                                                   Empty
+                                                   none
                                                    "/usr/bin/ntpd -g -u ntp:ntp"
-                                , privateTmp = Value
+                                , privateTmp = one
                                                $ S.newValue
                                                $ PrivateTmp
                                                $ setType BTrue sTrue
-                                , restart    = Value $ S.newValue $ RAlways
+                                , restart    = one $ S.newValue $ RAlways
                                 }
                 , install = mempty
                     { wantedBy = ResettableList
-                        [S.newValue $ ListElem ["multi-user.target"]]
+                        [S.newValue $ ListElem $ Words ["multi-user.target"]]
                     }
                 }
             )
@@ -451,29 +458,30 @@ ExecStart=/usr/lib/netctl/network start %I
 ExecStop=/usr/lib/netctl/network stop %I|]
             (mempty
                 { unit    = mempty
-                    { description   = Value "Networking for netctl profile %I"
+                    { description   = one "Networking for netctl profile %I"
                     , documentation = List
-                        [S.newValue [DocMan "netctl.profile(5)"]]
+                        [S.newValue $ Words [DocMan "netctl.profile(5)"]]
                     , after         = ResettableList
-                                          [S.newValue $ ListElem ["network-pre.target"]]
-                    , before        =
-                        ResettableList
-                            [ S.newValue $ ListElem
-                                  ["network.target", "netctl.service"]
-                            ]
+                        [S.newValue $ ListElem $ Words ["network-pre.target"]]
+                    , before        = ResettableList
+                                          [ S.newValue $ ListElem $ Words
+                                                ["network.target", "netctl.service"]
+                                          ]
                     , wants         = ResettableList
-                                          [S.newValue $ ListElem ["network.target"]]
+                        [S.newValue $ ListElem $ Words ["network.target"]]
                     }
                 , service = mempty
-                                { type_ = TNotify
-                                              (Value $ S.newValue NAExec)
-                                              "/usr/lib/netctl/network start %I"
-                                , remainAfterExit = Value
-                                                    $ S.newValue
-                                                    $ RemainAfterExit
-                                                    $ setType BYes sTrue
-                                , execStop = ["/usr/lib/netctl/network stop %I"]
-                                }
+                    { type_ = TNotify (one $ S.newValue NAExec)
+                                      "/usr/lib/netctl/network start %I"
+                    , remainAfterExit = one
+                                        $ S.newValue
+                                        $ RemainAfterExit
+                                        $ setType BYes sTrue
+                    , execStop = List
+                        [S.newValue "/usr/lib/netctl/network stop %I"]
+                    }
+                }
+            )
                 }
             )
 
