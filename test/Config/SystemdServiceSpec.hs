@@ -17,6 +17,7 @@ import qualified Config                        as C
 import qualified Data.Text                     as T
 import qualified Syntax                        as S
 import qualified Syntax.XDGDesktop             as XDGDesktop
+import           Syntax.XDGDesktop              ( (<#) )
 import           Syntax                         ( (/*)
                                                 , (/**)
                                                 )
@@ -482,6 +483,107 @@ ExecStop=/usr/lib/netctl/network stop %I|]
                     }
                 }
             )
+        fullRoundTrip
+            "Network Manager"
+            [r|[Unit]
+Description=Network Manager
+Documentation=man:NetworkManager(8)
+Wants=network.target
+After=network-pre.target dbus.service
+Before=network.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.NetworkManager
+ExecReload=/usr/bin/busctl call org.freedesktop.NetworkManager /org/freedesktop/NetworkManager org.freedesktop.NetworkManager Reload u 0
+#ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/bin/NetworkManager --no-daemon
+Restart=on-failure
+# NM doesn't want systemd to kill its children for it
+KillMode=process
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_OVERRIDE CAP_NET_RAW CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID CAP_SYS_MODULE CAP_AUDIT_WRITE CAP_KILL CAP_SYS_CHROOT
+ProtectSystem=true
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
+Also=NetworkManager-dispatcher.service
+# We want to enable NetworkManager-wait-online.service whenever this service
+# is enabled. NetworkManager-wait-online.service has
+# WantedBy=network-online.target, so enabling it only has an effect if
+# network-online.target itself is enabled or pulled in by some other unit.
+Also=NetworkManager-wait-online.service|]
+            (mempty
+                { unit    = mempty
+                    { description   = one "Network Manager"
+                    , documentation =
+                        List $ [S.newValue $ Words [DocMan "NetworkManager(8)"]]
+                    , wants         = ResettableList
+                        [S.newValue $ ListElem $ Words ["network.target"]]
+                    , after         = ResettableList
+                                          [ S.newValue $ ListElem $ Words
+                                                ["network-pre.target", "dbus.service"]
+                                          ]
+                    , before        = ResettableList
+                        [S.newValue $ ListElem $ Words ["network.target"]]
+                    }
+                , service = mempty
+                    { type_                 = TDBus
+                        (S.newValue $ BusName "org.freedesktop.NetworkManager")
+                        "/usr/bin/NetworkManager --no-daemon"
+                    , execReload            = List
+                        [ S.newValue
+                            "/usr/bin/busctl call org.freedesktop.NetworkManager /org/freedesktop/NetworkManager org.freedesktop.NetworkManager Reload u 0"
+                        , S.setEnabled False
+                            $ S.newValue "/bin/kill -HUP $MAINPID"
+                        ]
+                    , restart               = one $ S.newValue ROnFailure
+                    , killMode              =
+                        one
+                            $ (S.newValue KMProcess
+                              <# " NM doesn't want systemd to kill its children for it"
+                              )
+                    , protectHome           = one $ S.newValue $ PMReadOnly
+                    , protectSystem         = one $ S.newValue $ PSBool sTrue
+                    , capabilityBoundingSet = ResettableList
+                        [ S.newValue
+                        $ ListElem
+                        $ IncludedCapabilities
+                        $ Words
+                              [ CAP_NET_ADMIN
+                              , CAP_DAC_OVERRIDE
+                              , CAP_NET_RAW
+                              , CAP_NET_BIND_SERVICE
+                              ]
+                        , S.newValue $ ListElem $ IncludedCapabilities $ Words
+                            [ CAP_SETGID
+                            , CAP_SETUID
+                            , CAP_SYS_MODULE
+                            , CAP_AUDIT_WRITE
+                            , CAP_KILL
+                            , CAP_SYS_CHROOT
+                            ]
+                        ]
+                    }
+                , install = mempty
+                    { wantedBy = ResettableList
+                        [S.newValue $ ListElem $ Words ["multi-user.target"]]
+                    , also     = List
+                        [ S.newValue
+                            $ Words ["NetworkManager-dispatcher.service"]
+                        , ( S.newValue
+                          $ Words ["NetworkManager-wait-online.service"]
+                          )
+                            <# S.newComment
+                                   "#"
+                                   [ " We want to enable NetworkManager-wait-online.service whenever this service"
+                                   , " is enabled. NetworkManager-wait-online.service has"
+                                   , " WantedBy=network-online.target, so enabling it only has an effect if"
+                                   , " network-online.target itself is enabled or pulled in by some other unit."
+                                   ]
+                        ]
+                    }
                 }
             )
 

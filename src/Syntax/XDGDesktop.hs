@@ -54,7 +54,7 @@ commentStart :: Ord e => P.Parser e T.Text
 commentStart = P.choice ["#", ";"]
 
 
-parser :: Ord e => P.Parser e XDGDesktop
+parser :: P.ShowErrorComponent e => P.Parser e XDGDesktop
 parser =
     XDGDesktop
         <$> (Maybe.fromMaybe mempty <$> P.optional (P.try parseSection))
@@ -63,7 +63,7 @@ parser =
         <*> (Maybe.fromMaybe mempty <$> P.optional parseComment)
 
 
-parseSections :: Ord e => P.Parser e Sections
+parseSections :: P.ShowErrorComponent e => P.Parser e Sections
 parseSections = newSections <$> P.some ((,) <$> parseHeader <*> parseSection)
 
 
@@ -71,17 +71,18 @@ parseHeader :: Ord e => P.Parser e T.Text
 parseHeader = C.anyHeader
 
 
-parseSection :: Ord e => P.Parser e Section
+parseSection :: P.ShowErrorComponent e => P.Parser e Section
 parseSection = mergeKeys <$> parseValueOrIgnoreEmptyLine
   where
-    parseValueOrIgnoreEmptyLine :: Ord e => P.Parser e [(T.Text, Value T.Text)]
+    parseValueOrIgnoreEmptyLine
+        :: P.ShowErrorComponent e => P.Parser e [(T.Text, Value T.Text)]
     parseValueOrIgnoreEmptyLine = Maybe.catMaybes <$> P.many
         ((Just <$> parseValue) <|> (P.emptyLine >> return Nothing))
 
     mergeKeys = foldl (/**) mempty . fmap (\(k, v) -> (k, [v]))
 
 
-parseValue :: Ord e => P.Parser e (T.Text, Value T.Text)
+parseValue :: P.ShowErrorComponent e => P.Parser e (T.Text, Value T.Text)
 parseValue = do
     preComments' <- Maybe.fromMaybe mempty <$> P.optional
         (mconcat <$> P.manyTill
@@ -94,19 +95,18 @@ parseValue = do
             )
         )
     enabled' <- Maybe.isNothing <$> P.optional (commentStart >> P.space)
-    C.Assignment key v <- assignment
+    C.Assignment _ _ key v <- assignment
     postComments' <- Maybe.fromMaybe mempty <$> P.optional parseComment
     return
-        ( C.plain key
+        ( C.unquote key
         , setEnabled enabled'
-        $  newValue (C.plain v)
+        $  newValue (C.unquote v)
         <# preComments'
         #> postComments'
         )
 
   where
-    disabledAssignment =
-        P.space >> P.optional commentStart >> P.space >> C.anyAssignment P.line
+    disabledAssignment = P.optional commentStart >> C.anyAssignment P.line
 
     assignment =
         C.anyAssignment

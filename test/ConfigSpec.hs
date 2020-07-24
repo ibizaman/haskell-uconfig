@@ -50,78 +50,92 @@ spec = do
         H.it "parses assignment"
             $              parse (anyAssignment P.word) "key=value"
             `HPP.shouldBe` Right
-                               (Assignment (Spaced 0 0 (NotQuoted "key"))
-                                           (Spaced 0 0 (NotQuoted "value"))
+                               (Assignment 0
+                                           0
+                                           (NotQuoted "key")
+                                           (NotQuoted "value")
                                )
         H.it "parses assignment with spaces"
-            $              parse (anyAssignment P.word) "  key   = value   "
+            $              parse (anyAssignment P.word) "key   = value"
             `HPP.shouldBe` Right
-                               (Assignment (Spaced 2 3 (NotQuoted "key"))
-                                           (Spaced 1 3 (NotQuoted "value"))
+                               (Assignment 3
+                                           1
+                                           (NotQuoted "key")
+                                           (NotQuoted "value")
                                )
         H.it "parses assignment with multiple words as value"
             $              parse (anyAssignment P.words) "key=v a l u e"
             `HPP.shouldBe` Right
-                               (Assignment
-                                   (Spaced 0 0 (NotQuoted "key"))
-                                   (Spaced 0 0 (NotQuoted "v a l u e"))
+                               (Assignment 0
+                                           0
+                                           (NotQuoted "key")
+                                           (NotQuoted "v a l u e")
                                )
     H.describe "flat" $ do
         H.it "parses one line"
             $              parse (flat P.word) "key=value"
             `HPP.shouldBe` Right
                                (Flat
-                                   [ Assignment
-                                         (Spaced 0 0 (NotQuoted "key"))
-                                         (Spaced 0 0 (NotQuoted "value"))
+                                   [ Assignment 0
+                                                0
+                                                (NotQuoted "key")
+                                                (NotQuoted "value")
                                    ]
                                )
         H.it "parses multiple lines"
             $ parse (flat P.word) "key=value\nkey2=value2\nkey3=value3"
             `HPP.shouldBe` Right
                                (Flat
-                                   [ Assignment
-                                       (Spaced 0 0 (NotQuoted "key"))
-                                       (Spaced 0 0 (NotQuoted "value"))
-                                   , Assignment
-                                       (Spaced 0 0 (NotQuoted "key2"))
-                                       (Spaced 0 0 (NotQuoted "value2"))
-                                   , Assignment
-                                       (Spaced 0 0 (NotQuoted "key3"))
-                                       (Spaced 0 0 (NotQuoted "value3"))
+                                   [ Assignment 0
+                                                0
+                                                (NotQuoted "key")
+                                                (NotQuoted "value")
+                                   , Assignment 0
+                                                0
+                                                (NotQuoted "key2")
+                                                (NotQuoted "value2")
+                                   , Assignment 0
+                                                0
+                                                (NotQuoted "key3")
+                                                (NotQuoted "value3")
                                    ]
                                )
         H.it "parses multiple lines with spaces"
-            $ parse (flat P.word)
-                    " key  =   value \nkey2=value2\n key3  =  value3 "
+            $ parse (flat P.word) "key  =   value\nkey2=value2\nkey3  =  value3"
             `HPP.shouldBe` Right
                                (Flat
-                                   [ Assignment
-                                       (Spaced 1 2 (NotQuoted "key"))
-                                       (Spaced 3 1 (NotQuoted "value"))
-                                   , Assignment
-                                       (Spaced 0 0 (NotQuoted "key2"))
-                                       (Spaced 0 0 (NotQuoted "value2"))
-                                   , Assignment
-                                       (Spaced 1 2 (NotQuoted "key3"))
-                                       (Spaced 2 1 (NotQuoted "value3"))
+                                   [ Assignment 2
+                                                3
+                                                (NotQuoted "key")
+                                                (NotQuoted "value")
+                                   , Assignment 0
+                                                0
+                                                (NotQuoted "key2")
+                                                (NotQuoted "value2")
+                                   , Assignment 2
+                                                2
+                                                (NotQuoted "key3")
+                                                (NotQuoted "value3")
                                    ]
                                )
         H.it "parses multiple lines with spaces and quotes"
             $              parse
                                (flat P.word)
-                               " \" key \"  =   value \n'key2'='  value2'\n key3  =  value3 "
+                               "\" key \"  =   value\n'key2'='  value2'\nkey3  =  value3"
             `HPP.shouldBe` Right
                                (Flat
-                                   [ Assignment
-                                       (Spaced 1 2 (DoubleQuoted 1 1 "key"))
-                                       (Spaced 3 1 (NotQuoted "value"))
-                                   , Assignment
-                                       (Spaced 0 0 (SingleQuoted 0 0 "key2"))
-                                       (Spaced 0 0 (SingleQuoted 2 0 "value2"))
-                                   , Assignment
-                                       (Spaced 1 2 (NotQuoted "key3"))
-                                       (Spaced 2 1 (NotQuoted "value3"))
+                                   [ Assignment 2
+                                                3
+                                                (DoubleQuoted 1 1 "key")
+                                                (NotQuoted "value")
+                                   , Assignment 0
+                                                0
+                                                (SingleQuoted 0 0 "key2")
+                                                (SingleQuoted 2 0 "value2")
+                                   , Assignment 2
+                                                2
+                                                (NotQuoted "key3")
+                                                (NotQuoted "value3")
                                    ]
                                )
     H.describe "anyHeader" $ do
@@ -148,8 +162,10 @@ spec = do
         $              parse (anySection P.word) "[section]\nkey=value"
         `HPP.shouldBe` Right
                            ( "section"
-                           , [ Assignment (Spaced 0 0 (NotQuoted "key"))
-                                          (Spaced 0 0 (NotQuoted "value"))
+                           , [ Assignment 0
+                                          0
+                                          (NotQuoted "key")
+                                          (NotQuoted "value")
                              ]
                            )
     H.describe "sectioned" $ do
@@ -158,31 +174,35 @@ spec = do
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"
-                                     , [ Assignment
-                                             (Spaced 0 0 (NotQuoted "key"))
-                                             (Spaced 0 0 (NotQuoted "value"))
+                                     , [ Assignment 0
+                                                    0
+                                                    (NotQuoted "key")
+                                                    (NotQuoted "value")
                                        ]
                                      )
                                    ]
                                )
         H.it "parses multiple sections"
             $              parse (sectioned P.word)
-                                 "[section]\nkey=value\n k = v \n[s2]\nk2=v2"
+                                 "[section]\nkey=value\nk = v\n[s2]\nk2=v2"
             `HPP.shouldBe` Right
                                (Sectioned
                                    [ ( "section"
-                                     , [ Assignment
-                                           (Spaced 0 0 (NotQuoted "key"))
-                                           (Spaced 0 0 (NotQuoted "value"))
-                                       , Assignment
-                                           (Spaced 1 1 (NotQuoted "k"))
-                                           (Spaced 1 1 (NotQuoted "v"))
+                                     , [ Assignment 0
+                                                    0
+                                                    (NotQuoted "key")
+                                                    (NotQuoted "value")
+                                       , Assignment 1
+                                                    1
+                                                    (NotQuoted "k")
+                                                    (NotQuoted "v")
                                        ]
                                      )
                                    , ( "s2"
-                                     , [ Assignment
-                                             (Spaced 0 0 (NotQuoted "k2"))
-                                             (Spaced 0 0 (NotQuoted "v2"))
+                                     , [ Assignment 0
+                                                    0
+                                                    (NotQuoted "k2")
+                                                    (NotQuoted "v2")
                                        ]
                                      )
                                    ]

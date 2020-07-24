@@ -55,22 +55,21 @@ spec = do
             $ newComment "#" [" my ", " comment"]
         parsesRight "two lines" parseComment "# my \n# comment\n"
             $ newComment "#" [" my ", " comment"]
+        parsesRight "one value enabled with space" parseComment "# a=b"
+            $ newComment "#" [" a=b"]
 
     H.describe "parseValue" $ do
-        parsesLeft "empty"      parseValue ""
-        parsesLeft "no equal"   parseValue "a b"
-        parsesLeft "only value" parseValue "=b"
-        parsesLeft "only key"   parseValue "a="
+        parsesLeft "empty"                        parseValue ""
+        parsesLeft "no equal"                     parseValue "a b"
+        parsesLeft "only value"                   parseValue "=b"
+        parsesLeft "only key"                     parseValue "a="
+        parsesLeft "one value enabled with space" parseValue "# a=b"
         parsesRight "one value" parseValue "a=b" ("a", "b")
         parsesRight "ME one value disabled"
                     parseValue
                     "#a=b"
                     ("a", setEnabled False "b")
-        parsesRight "one value disabled with space"
-                    parseValue
-                    "# a=b"
-                    ("a", setEnabled False "b")
-        parsesRight "with spaces" parseValue " a = b c " ("a", "b c ")
+        parsesRight "with spaces" parseValue "a = b c" ("a", "b c")
         parsesRight "one value with pre comment"
                     parseValue
                     "# comment\na=b"

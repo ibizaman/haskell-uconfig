@@ -41,6 +41,7 @@ module Config
     , spaced
     , Quoted(..)
     , quoted
+    , unquote
     , plain
     , Assignment(..)
     , assignment
@@ -196,14 +197,14 @@ newtype Sectioned v = Sectioned [(T.Text, [Assignment v])]
 
 
 -- |Assignment is a 'key=value' pair that remembers the formatting.
--- Both the 'key' and the 'value' can be Quoted and can have leading
--- and trailing space.
+-- Both the 'key' and the 'value' can be Quoted, the equal sign can
+-- have spaces around it.
 --
--- > Assignment (Spaced 0 1 (NotQuoted "key")) (Spaced 1 0 (SingleQuoted 1 1 "value"))
+-- > Assignment 1 1 (NotQuoted "key") (SingleQuoted 1 1 "value")
 -- represents:
 --
 -- > "key = ' value '"
-data Assignment v = Assignment (Spaced (Quoted T.Text)) (Spaced (Quoted v))
+data Assignment v = Assignment Int Int (Quoted T.Text) (Quoted v)
   deriving (Show, Eq)
 
 
@@ -335,21 +336,23 @@ assignment name valueParser = do
 -- as an 'Assignment'.
 --
 -- >>> P.parse (anyAssignment P.word) "key = value"
--- Right (Assignment (Spaced 0 1 (NotQuoted "key")) (Spaced 1 0 (NotQuoted "value")))
+-- Right (Assignment 1 1 (NotQuoted "key") (NotQuoted "value"))
 --
 -- Showing it remembers formatting correctly:
 --
--- >>> P.parse (anyAssignment P.word) " ' key' = \" value \"  "
--- Right (Assignment (Spaced 1 1 (SingleQuoted 1 0 "key")) (Spaced 1 2 (DoubleQuoted 1 1 "value")))
+-- >>> P.parse (anyAssignment P.word) "' key' =  \" value \""
+-- Right (Assignment 1 2 (SingleQuoted 1 0 "key") (DoubleQuoted 1 1 "value"))
 anyAssignment
     :: Ord e
     => P.Parser e v -- ^Parser of the value of the assignment.
     -> P.Parser e (Assignment v)
 anyAssignment valueParser = do
-    key   <- spaced $ quoted P.word
-    _     <- P.char '='
-    value <- spaced $ quoted valueParser
-    return $ Assignment key value
+    key        <- quoted P.word
+    leftSpace  <- P.space
+    _          <- P.char '='
+    rightSpace <- P.space
+    value      <- quoted valueParser
+    return $ Assignment leftSpace rightSpace key value
 
 
 -- |Megaparsec 'P.Parser' parsing a value that can be enclosed in
@@ -392,9 +395,12 @@ quoted p = P.choice
         _      <- P.char c
         return $ f open close middle
 
+unquote :: Quoted v -> v
+unquote (NotQuoted t       ) = t
+unquote (SingleQuoted _ _ t) = t
+unquote (DoubleQuoted _ _ t) = t
+
 
 -- |Removes spaces and quotes and returns the raw value.
 plain :: Spaced (Quoted v) -> v
-plain (Spaced _ _ (NotQuoted t       )) = t
-plain (Spaced _ _ (SingleQuoted _ _ t)) = t
-plain (Spaced _ _ (DoubleQuoted _ _ t)) = t
+plain (Spaced _ _ t) = unquote t

@@ -66,6 +66,11 @@ module Config.SystemdService
     , PrivateTmp(..)
     , Restart(..)
     , KillMode(..)
+    , ProtectHome(..)
+    , ProtectSystem(..)
+    , Capability(..)
+    , InclusionCapabilities(..)
+    , CapabilitiesSet
     )
 where
 
@@ -214,16 +219,7 @@ setValue :: Bool -> SBool -> SBool
 setValue v b = b { svalue = v }
 
 instance C.Config T.Text SBool where
-    parser = C.parseText $ P.choice
-        [ "true" $> SBool True BTrue
-        , "yes" $> SBool True BYes
-        , "on" $> SBool True BOn
-        , "1" $> SBool True BNum
-        , "false" $> SBool False BTrue
-        , "no" $> SBool False BYes
-        , "off" $> SBool False BOn
-        , "0" $> SBool False BNum
-        ]
+    parser = C.parseText sboolParser
 
     unparser v = case (stype v, svalue v) of
         (BTrue, True ) -> "true"
@@ -234,6 +230,18 @@ instance C.Config T.Text SBool where
         (BOn  , False) -> "off"
         (BNum , True ) -> "1"
         (BNum , False) -> "0"
+
+sboolParser :: (Ord e) => P.Parser e SBool
+sboolParser = P.choice
+    [ "true" $> SBool True BTrue
+    , "yes" $> SBool True BYes
+    , "on" $> SBool True BOn
+    , "1" $> SBool True BNum
+    , "false" $> SBool False BTrue
+    , "no" $> SBool False BYes
+    , "off" $> SBool False BOn
+    , "0" $> SBool False BNum
+    ]
 
 
 -- |A Systemd Service record.
@@ -386,8 +394,11 @@ instance C.Config T.Text [Target] where
 -- |A Systemd [Install] record.
 -- https://www.freedesktop.org/software/systemd/man/systemd.unit.html#%5BInstall%5D%20Section%20Options
 data Install = Install
-    { wantedBy :: ResettableList (Words Target)
+    { alias :: List (Words T.Text)
+    , wantedBy :: ResettableList (Words Target)
     , requiredBy :: ResettableList (Words Target)
+    , also :: List (Words Target)
+    , defaultInstance :: One T.Text
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Install)
@@ -395,13 +406,19 @@ data Install = Install
 instance C.Config S.Section Install where
     parser sec =
         Install
-            <$> (C.parser (S.getValue sec "WantedBy"))
+            <$> (C.parser (S.getValue sec "Alias"))
+            <*> (C.parser (S.getValue sec "WantedBy"))
             <*> (C.parser (S.getValue sec "RequiredBy"))
+            <*> (C.parser (S.getValue sec "Also"))
+            <*> (C.parser (S.getValue sec "DefaultInstance"))
 
     unparser u =
         mempty
-            /**? ("WantedBy"  , C.unparser $ wantedBy u)
-            /**? ("RequiredBy", C.unparser $ requiredBy u)
+            /**? ("Alias"          , C.unparser $ alias u)
+            /**? ("WantedBy"       , C.unparser $ wantedBy u)
+            /**? ("RequiredBy"     , C.unparser $ requiredBy u)
+            /**? ("Also"           , C.unparser $ also u)
+            /**? ("DefaultInstance", C.unparser $ defaultInstance u)
 
 
 -- |A Systemd [Service] record.
@@ -425,6 +442,9 @@ data Service = Service
     , restart :: One Restart
     , privateTmp :: One PrivateTmp
     , killMode :: One KillMode
+    , protectHome :: One ProtectHome
+    , protectSystem :: One ProtectSystem
+    , capabilityBoundingSet :: CapabilitiesSet
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Service)
@@ -449,6 +469,9 @@ instance C.Config S.Section Service where
             <*> (C.parser (S.getValue sec "Restart"))
             <*> (C.parser (S.getValue sec "PrivateTmp"))
             <*> (C.parser (S.getValue sec "KillMode"))
+            <*> (C.parser (S.getValue sec "ProtectHome"))
+            <*> (C.parser (S.getValue sec "ProtectSystem"))
+            <*> (C.parser (S.getValue sec "CapabilityBoundingSet"))
 
     unparser u =
         let
@@ -486,22 +509,25 @@ instance C.Config S.Section Service where
                         /** ("Type"     , pure "idle")
                         /** ("ExecStart", C.unparser exec)
         in  t
-                /**? ("User"            , C.unparser $ user u)
-                /**? ("Group"           , C.unparser $ group u)
-                /**? ("WorkingDirectory", C.unparser $ workingDirectory u)
-                /**? ("StandardOutput"  , C.unparser $ standardOutput u)
-                /**? ("StandardError"   , C.unparser $ standardError u)
-                /**? ("TasksMax"        , C.unparser $ tasksMax u)
-                /**? ("Restart"         , C.unparser $ restart u)
-                /**? ("PrivateTmp"      , C.unparser $ privateTmp u)
-                /**? ("RemainAfterExit" , C.unparser $ remainAfterExit u)
-                /**? ("ExecCondition"   , C.unparser $ execCondition u)
-                /**? ("ExecStartPre"    , C.unparser $ execStartPre u)
-                /**? ("ExecStartPost"   , C.unparser $ execStartPost u)
-                /**? ("ExecReload"      , C.unparser $ execReload u)
-                /**? ("ExecStop"        , C.unparser $ execStop u)
-                /**? ("ExecStopPost"    , C.unparser $ execStopPost u)
-                /**? ("KillMode"        , C.unparser $ killMode u)
+                /**? ("User"                 , C.unparser $ user u)
+                /**? ("Group"                , C.unparser $ group u)
+                /**? ("WorkingDirectory"     , C.unparser $ workingDirectory u)
+                /**? ("StandardOutput"       , C.unparser $ standardOutput u)
+                /**? ("StandardError"        , C.unparser $ standardError u)
+                /**? ("TasksMax"             , C.unparser $ tasksMax u)
+                /**? ("Restart"              , C.unparser $ restart u)
+                /**? ("PrivateTmp"           , C.unparser $ privateTmp u)
+                /**? ("RemainAfterExit"      , C.unparser $ remainAfterExit u)
+                /**? ("ExecCondition"        , C.unparser $ execCondition u)
+                /**? ("ExecStartPre"         , C.unparser $ execStartPre u)
+                /**? ("ExecStartPost"        , C.unparser $ execStartPost u)
+                /**? ("ExecReload"           , C.unparser $ execReload u)
+                /**? ("ExecStop"             , C.unparser $ execStop u)
+                /**? ("ExecStopPost"         , C.unparser $ execStopPost u)
+                /**? ("KillMode"             , C.unparser $ killMode u)
+                /**? ("ProtectHome"          , C.unparser $ protectHome u)
+                /**? ("ProtectSystem"        , C.unparser $ protectSystem u)
+                /**? ("CapabilityBoundingSet", C.unparser $ capabilityBoundingSet u)
 
 
 -- |A Systemd [Type] record.
@@ -824,3 +850,205 @@ instance C.Config T.Text KillMode where
     unparser KMMixed        = "mixed"
     unparser KMProcess      = "process"
     unparser KMNone         = "none"
+
+
+data ProtectHome
+    = PMBool SBool
+    | PMReadOnly
+    | PMTmpfs
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last ProtectHome))
+
+instance Monoid ProtectHome where
+    mempty = PMBool sFalse
+
+instance C.Config T.Text ProtectHome where
+    parser = C.parseText
+        (P.choice
+            [ P.chunk "read-only" $> PMReadOnly
+            , P.chunk "tmpfs" $> PMTmpfs
+            , PMBool <$> sboolParser
+            ]
+        )
+
+    unparser PMReadOnly = "read-only"
+    unparser PMTmpfs    = "tmpfs"
+    unparser (PMBool b) = C.unparser b
+
+
+data ProtectSystem
+    = PSBool SBool
+    | PSFull
+    | PSStrict
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup) via (Generically (Last ProtectSystem))
+
+instance Monoid ProtectSystem where
+    mempty = PSBool sFalse
+
+instance C.Config T.Text ProtectSystem where
+    parser = C.parseText
+        (P.choice
+            [ P.chunk "full" $> PSFull
+            , P.chunk "strict" $> PSStrict
+            , PSBool <$> sboolParser
+            ]
+        )
+
+    unparser PSFull     = "full"
+    unparser PSStrict   = "strict"
+    unparser (PSBool b) = C.unparser b
+
+
+-- |https://man7.org/linux/man-pages/man7/capabilities.7.html
+data Capability
+    = CAP_AUDIT_CONTROL
+    | CAP_AUDIT_READ
+    | CAP_AUDIT_WRITE
+    | CAP_BLOCK_SUSPEND
+    | CAP_CHOWN
+    | CAP_DAC_OVERRIDE
+    | CAP_DAC_READ_SEARCH
+    | CAP_FOWNER
+    | CAP_FSETID
+    | CAP_IPC_LOCK
+    | CAP_IPC_OWNER
+    | CAP_KILL
+    | CAP_LEASE
+    | CAP_LINUX_IMMUTABLE
+    | CAP_MAC_ADMIN
+    | CAP_MAC_OVERRIDE
+    | CAP_MKNOD
+    | CAP_NET_ADMIN
+    | CAP_NET_BIND_SERVICE
+    | CAP_NET_BROADCAST
+    | CAP_NET_RAW
+    | CAP_SETGID
+    | CAP_SETFCAP
+    | CAP_SETPCAP
+    | CAP_SETUID
+    | CAP_SYS_ADMIN
+    | CAP_SYS_BOOT
+    | CAP_SYS_CHROOT
+    | CAP_SYS_MODULE
+    | CAP_SYS_NICE
+    | CAP_SYS_PACCT
+    | CAP_SYS_PTRACE
+    | CAP_SYS_RAWIO
+    | CAP_SYS_RESOURCE
+    | CAP_SYS_TIME
+    | CAP_SYS_TTY_CONFIG
+    | CAP_SYSLOG
+    | CAP_WAKE_ALARM
+    deriving(Show, Eq)
+
+instance C.Config T.Text Capability where
+    parser = C.parseText
+        (P.choice
+            [ "CAP_AUDIT_CONTROL" $> CAP_AUDIT_CONTROL
+            , "CAP_AUDIT_READ" $> CAP_AUDIT_READ
+            , "CAP_AUDIT_WRITE" $> CAP_AUDIT_WRITE
+            , "CAP_BLOCK_SUSPEND" $> CAP_BLOCK_SUSPEND
+            , "CAP_CHOWN" $> CAP_CHOWN
+            , "CAP_DAC_OVERRIDE" $> CAP_DAC_OVERRIDE
+            , "CAP_DAC_READ_SEARCH" $> CAP_DAC_READ_SEARCH
+            , "CAP_FOWNER" $> CAP_FOWNER
+            , "CAP_FSETID" $> CAP_FSETID
+            , "CAP_IPC_LOCK" $> CAP_IPC_LOCK
+            , "CAP_IPC_OWNER" $> CAP_IPC_OWNER
+            , "CAP_KILL" $> CAP_KILL
+            , "CAP_LEASE" $> CAP_LEASE
+            , "CAP_LINUX_IMMUTABLE" $> CAP_LINUX_IMMUTABLE
+            , "CAP_MAC_ADMIN" $> CAP_MAC_ADMIN
+            , "CAP_MAC_OVERRIDE" $> CAP_MAC_OVERRIDE
+            , "CAP_MKNOD" $> CAP_MKNOD
+            , "CAP_NET_ADMIN" $> CAP_NET_ADMIN
+            , "CAP_NET_BIND_SERVICE" $> CAP_NET_BIND_SERVICE
+            , "CAP_NET_BROADCAST" $> CAP_NET_BROADCAST
+            , "CAP_NET_RAW" $> CAP_NET_RAW
+            , "CAP_SETGID" $> CAP_SETGID
+            , "CAP_SETFCAP" $> CAP_SETFCAP
+            , "CAP_SETPCAP" $> CAP_SETPCAP
+            , "CAP_SETUID" $> CAP_SETUID
+            , "CAP_SYS_ADMIN" $> CAP_SYS_ADMIN
+            , "CAP_SYS_BOOT" $> CAP_SYS_BOOT
+            , "CAP_SYS_CHROOT" $> CAP_SYS_CHROOT
+            , "CAP_SYS_MODULE" $> CAP_SYS_MODULE
+            , "CAP_SYS_NICE" $> CAP_SYS_NICE
+            , "CAP_SYS_PACCT" $> CAP_SYS_PACCT
+            , "CAP_SYS_PTRACE" $> CAP_SYS_PTRACE
+            , "CAP_SYS_RAWIO" $> CAP_SYS_RAWIO
+            , "CAP_SYS_RESOURCE" $> CAP_SYS_RESOURCE
+            , "CAP_SYS_TIME" $> CAP_SYS_TIME
+            , "CAP_SYS_TTY_CONFIG" $> CAP_SYS_TTY_CONFIG
+            , "CAP_SYSLOG" $> CAP_SYSLOG
+            , "CAP_WAKE_ALARM" $> CAP_WAKE_ALARM
+            ]
+        )
+
+    unparser CAP_AUDIT_CONTROL    = "CAP_AUDIT_CONTROL"
+    unparser CAP_AUDIT_READ       = "CAP_AUDIT_READ"
+    unparser CAP_AUDIT_WRITE      = "CAP_AUDIT_WRITE"
+    unparser CAP_BLOCK_SUSPEND    = "CAP_BLOCK_SUSPEND"
+    unparser CAP_CHOWN            = "CAP_CHOWN"
+    unparser CAP_DAC_OVERRIDE     = "CAP_DAC_OVERRIDE"
+    unparser CAP_DAC_READ_SEARCH  = "CAP_DAC_READ_SEARCH"
+    unparser CAP_FOWNER           = "CAP_FOWNER"
+    unparser CAP_FSETID           = "CAP_FSETID"
+    unparser CAP_IPC_LOCK         = "CAP_IPC_LOCK"
+    unparser CAP_IPC_OWNER        = "CAP_IPC_OWNER"
+    unparser CAP_KILL             = "CAP_KILL"
+    unparser CAP_LEASE            = "CAP_LEASE"
+    unparser CAP_LINUX_IMMUTABLE  = "CAP_LINUX_IMMUTABLE"
+    unparser CAP_MAC_ADMIN        = "CAP_MAC_ADMIN"
+    unparser CAP_MAC_OVERRIDE     = "CAP_MAC_OVERRIDE"
+    unparser CAP_MKNOD            = "CAP_MKNOD"
+    unparser CAP_NET_ADMIN        = "CAP_NET_ADMIN"
+    unparser CAP_NET_BIND_SERVICE = "CAP_NET_BIND_SERVICE"
+    unparser CAP_NET_BROADCAST    = "CAP_NET_BROADCAST"
+    unparser CAP_NET_RAW          = "CAP_NET_RAW"
+    unparser CAP_SETGID           = "CAP_SETGID"
+    unparser CAP_SETFCAP          = "CAP_SETFCAP"
+    unparser CAP_SETPCAP          = "CAP_SETPCAP"
+    unparser CAP_SETUID           = "CAP_SETUID"
+    unparser CAP_SYS_ADMIN        = "CAP_SYS_ADMIN"
+    unparser CAP_SYS_BOOT         = "CAP_SYS_BOOT"
+    unparser CAP_SYS_CHROOT       = "CAP_SYS_CHROOT"
+    unparser CAP_SYS_MODULE       = "CAP_SYS_MODULE"
+    unparser CAP_SYS_NICE         = "CAP_SYS_NICE"
+    unparser CAP_SYS_PACCT        = "CAP_SYS_PACCT"
+    unparser CAP_SYS_PTRACE       = "CAP_SYS_PTRACE"
+    unparser CAP_SYS_RAWIO        = "CAP_SYS_RAWIO"
+    unparser CAP_SYS_RESOURCE     = "CAP_SYS_RESOURCE"
+    unparser CAP_SYS_TIME         = "CAP_SYS_TIME"
+    unparser CAP_SYS_TTY_CONFIG   = "CAP_SYS_TTY_CONFIG"
+    unparser CAP_SYSLOG           = "CAP_SYSLOG"
+    unparser CAP_WAKE_ALARM       = "CAP_WAKE_ALARM"
+
+data InclusionCapabilities a
+    = IncludedCapabilities a
+    | ExcludedCapabilities a
+    deriving(Show, Eq, Functor)
+
+instance C.Config T.Text a => C.Config T.Text (InclusionCapabilities a) where
+    parser t = constructor t >>= embeddedParser
+      where
+        constructor :: T.Text -> C.ParseResult (InclusionCapabilities T.Text)
+        constructor = C.parseText
+            (P.optional "~" >>= \case
+                Nothing -> IncludedCapabilities <$> P.line
+                Just _  -> ExcludedCapabilities <$> P.line
+            )
+
+        embeddedParser
+            :: C.Config T.Text a
+            => InclusionCapabilities T.Text
+            -> C.ParseResult (InclusionCapabilities a)
+        embeddedParser v = case fmap C.parser v of
+            IncludedCapabilities r -> IncludedCapabilities <$> r
+            ExcludedCapabilities r -> ExcludedCapabilities <$> r
+
+    unparser (IncludedCapabilities v) = C.unparser v
+    unparser (ExcludedCapabilities v) = "~" <> C.unparser v
+
+type CapabilitiesSet = ResettableList (InclusionCapabilities (Words Capability))
