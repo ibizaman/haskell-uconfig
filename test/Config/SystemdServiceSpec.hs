@@ -253,7 +253,8 @@ spec = do
                                { service = mempty
                                    { type_    = TSimple
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , tasksMax = one $ S.newValue $ TasksMax 10
+                                   , tasksMax = one $ S.newValue $ NotInfinity
+                                                    10
                                    }
                                }
         H.it "with service and tasksmax=infinity"
@@ -272,9 +273,7 @@ spec = do
                                { service = mempty
                                    { type_    = TSimple
                                        "/usr/bin/darkhttpd . --port 6810"
-                                   , tasksMax = one
-                                                $ S.newValue
-                                                $ TasksMaxInfinity
+                                   , tasksMax = one $ S.newValue $ Infinity
                                    }
                                }
         H.it "with service and disabled tasksmax=infinity"
@@ -296,7 +295,7 @@ spec = do
                                    , tasksMax = one
                                                 $ S.setEnabled False
                                                 $ S.newValue
-                                                $ TasksMaxInfinity
+                                                $ Infinity
                                    }
                                }
     H.describe "full-fledge services" $ do
@@ -390,7 +389,7 @@ WantedBy=multi-user.target|]
                     , execReload = List [S.newValue "/usr/bin/laptop_mode auto"]
                     , standardOutput  = one $ S.newValue OJournal
                     , standardError   = one $ S.newValue OJournal
-                    , tasksMax        = one $ S.newValue TasksMaxInfinity
+                    , tasksMax        = one $ S.newValue Infinity
                     }
                 , install = mempty
                     { wantedBy = ResettableList
@@ -502,7 +501,8 @@ Restart=on-failure
 # NM doesn't want systemd to kill its children for it
 KillMode=process
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_OVERRIDE CAP_NET_RAW CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_SETGID CAP_SETUID CAP_SYS_MODULE CAP_AUDIT_WRITE CAP_KILL CAP_SYS_CHROOT
+CapabilityBoundingSet=~CAP_SETGID CAP_SETUID
+CapabilityBoundingSet=CAP_SYS_MODULE CAP_AUDIT_WRITE CAP_KILL CAP_SYS_CHROOT
 ProtectSystem=true
 ProtectHome=read-only
 
@@ -556,14 +556,17 @@ Also=NetworkManager-wait-online.service|]
                               , CAP_NET_RAW
                               , CAP_NET_BIND_SERVICE
                               ]
-                        , S.newValue $ ListElem $ IncludedCapabilities $ Words
-                            [ CAP_SETGID
-                            , CAP_SETUID
-                            , CAP_SYS_MODULE
-                            , CAP_AUDIT_WRITE
-                            , CAP_KILL
-                            , CAP_SYS_CHROOT
-                            ]
+                        , S.newValue $ ListElem $ ExcludedCapabilities $ Words
+                            [CAP_SETGID, CAP_SETUID]
+                        , S.newValue
+                        $ ListElem
+                        $ IncludedCapabilities
+                        $ Words
+                              [ CAP_SYS_MODULE
+                              , CAP_AUDIT_WRITE
+                              , CAP_KILL
+                              , CAP_SYS_CHROOT
+                              ]
                         ]
                     }
                 , install = mempty
@@ -583,6 +586,125 @@ Also=NetworkManager-wait-online.service|]
                                    , " network-online.target itself is enabled or pulled in by some other unit."
                                    ]
                         ]
+                    }
+                }
+            )
+        fullRoundTrip
+            "Docker"
+            [r|[Unit]
+Description=Docker Application Container Engine
+Documentation=https://docs.docker.com
+After=network-online.target docker.socket firewalld.service
+Wants=network-online.target
+Requires=docker.socket
+
+[Service]
+Type=notify
+# the default is not to use systemd for cgroups because the delegate issues still
+# exists and systemd currently does not support the cgroup feature set required
+# for containers run by docker
+ExecStart=/usr/bin/dockerd -H fd://
+ExecReload=/bin/kill -s HUP $MAINPID
+LimitNOFILE=1048576
+# Having non-zero Limit*s causes performance problems due to accounting overhead
+# in the kernel. We recommend using cgroups to do container-local accounting.
+LimitNPROC=infinity
+LimitCORE=infinity
+# Uncomment TasksMax if your systemd version supports it.
+# Only systemd 226 and above support this version.
+#TasksMax=infinity
+TimeoutStartSec=0
+# set delegate yes so that systemd does not reset the cgroups of docker containers
+Delegate=yes
+# kill only the docker process, not all processes in the cgroup
+KillMode=process
+# restart the docker process if it exits prematurely
+Restart=on-failure
+StartLimitBurst=3
+StartLimitInterval=60s
+
+[Install]
+WantedBy=multi-user.target|]
+            (mempty
+                { unit    = mempty
+                    { description   = one "Docker Application Container Engine"
+                    , documentation =
+                        List $ [S.newValue $ Words [DocHTTPS "docs.docker.com"]]
+                    , wants         =
+                        ResettableList
+                            [ S.newValue $ ListElem $ Words
+                                  ["network-online.target"]
+                            ]
+                    , after         = ResettableList
+                        [ S.newValue
+                          $ ListElem
+                          $ Words
+                                [ "network-online.target"
+                                , "docker.socket"
+                                , "firewalld.service"
+                                ]
+                        ]
+                    , requires      = ResettableList
+                        [S.newValue $ ListElem $ Words ["docker.socket"]]
+                    }
+                , service = mempty
+                    { type_ = TNotify
+                        none
+                        (S.newValue "/usr/bin/dockerd -H fd://" <# S.newComment
+                            "#"
+                            [ " the default is not to use systemd for cgroups because the delegate issues still"
+                            , " exists and systemd currently does not support the cgroup feature set required"
+                            , " for containers run by docker"
+                            ]
+                        )
+                    , execReload = List [S.newValue "/bin/kill -s HUP $MAINPID"]
+                    , restart = one $ S.newValue ROnFailure <# S.newComment1
+                        "#"
+                        " restart the docker process if it exits prematurely"
+                    , killMode =
+                        one
+                            $ (S.newValue KMProcess
+                              <# " kill only the docker process, not all processes in the cgroup"
+                              )
+                    , tasksMax =
+                        one
+                        $  S.setEnabled False
+                        $  S.newValue Infinity
+                        <# S.newComment
+                               "#"
+                               [ " Uncomment TasksMax if your systemd version supports it."
+                               , " Only systemd 226 and above support this version."
+                               ]
+                    , timeoutStartSec = one
+                                        $ S.newValue
+                                        $ NotInfinity
+                                        $ Time
+                                        $ [TimeNoUnit 0]
+                    , delegate =
+                        one $ S.newValue (setType BYes sTrue) <# S.newComment
+                            "#"
+                            [ " set delegate yes so that systemd does not reset the cgroups of docker containers"
+                            ]
+                    , limitNOFILE = one $ S.newValue $ LimitBoth $ NotInfinity
+                                        1048576
+                    , limitNPROC =
+                        one
+                        $  (S.newValue $ LimitBoth $ Infinity)
+                        <# S.newComment
+                               "#"
+                               [ " Having non-zero Limit*s causes performance problems due to accounting overhead"
+                               , " in the kernel. We recommend using cgroups to do container-local accounting."
+                               ]
+                    , limitCORE = one $ S.newValue $ LimitBoth $ Infinity
+                    , startLimitBurst = one $ S.newValue 3
+                    , startLimitInterval = one
+                                           $ S.newValue
+                                           $ Time
+                                           $ [Seconds "s" 60]
+                    }
+                , install = mempty
+                    { wantedBy = ResettableList
+                        [S.newValue $ ListElem $ Words ["multi-user.target"]]
                     }
                 }
             )

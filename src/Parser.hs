@@ -46,6 +46,7 @@ module Parser
     , word'
     , words
     , wordsSepBy
+    , NL.toList
     , number
     , until
 

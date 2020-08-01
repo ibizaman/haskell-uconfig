@@ -161,6 +161,11 @@ instance (Config T.Text v) => Config [S.Value T.Text] (S.Value v) where
         _   -> ParseError (MultipleFound "")
     unparser v = [fmap unparser v]
 
+instance Config T.Text Int where
+    parser   = parseText P.number
+
+    unparser = T.pack . show
+
 liftValue :: S.Value (ParseResult v) -> ParseResult (S.Value v)
 liftValue v = case S.value v of
     ParseSuccess v' -> ParseSuccess (v { S.value = v' })

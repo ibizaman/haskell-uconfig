@@ -62,7 +62,6 @@ module Config.SystemdService
     , NotifyAccess(..)
     , WorkingDirectory(..)
     , Output(..)
-    , TasksMax(..)
     , PrivateTmp(..)
     , Restart(..)
     , KillMode(..)
@@ -71,11 +70,14 @@ module Config.SystemdService
     , Capability(..)
     , InclusionCapabilities(..)
     , CapabilitiesSet
+    , Limit(..)
+    , Infinity(..)
+    , Time(..)
+    , TimeUnit(..)
     )
 where
 
 
-import           Control.Applicative            ( (<|>) )
 import           Data.Functor                   ( ($>) )
 import qualified Data.String
 import qualified Data.Text                     as T
@@ -438,16 +440,176 @@ data Service = Service
     , workingDirectory :: One WorkingDirectory
     , standardOutput :: One Output
     , standardError :: One Output
-    , tasksMax :: One TasksMax
+    , tasksMax :: One (Infinity Int)
     , restart :: One Restart
     , privateTmp :: One PrivateTmp
     , killMode :: One KillMode
     , protectHome :: One ProtectHome
     , protectSystem :: One ProtectSystem
     , capabilityBoundingSet :: CapabilitiesSet
+    , timeoutStartSec :: One (Infinity Time)
+    , delegate :: One SBool
+    , limitCPU :: One (Limit Time)
+    , limitFSIZE :: One (Limit Byte)
+    , limitDATA :: One (Limit Byte)
+    , limitSTACK :: One (Limit Byte)
+    , limitCORE :: One (Limit Byte)
+    , limitRSS :: One (Limit Byte)
+    , limitNOFILE :: One (Limit Int)
+    , limitAS :: One (Limit Byte)
+    , limitNPROC :: One (Limit Int)
+    , limitMEMLOCK :: One (Limit Byte)
+    , limitLOCKS :: One (Limit Int)
+    , limitSIGPENDING :: One (Limit Int)
+    , limitMSGQUEUE :: One (Limit Byte)
+    , limitNICE :: One (Limit Int)
+    , limitRTPRIO :: One (Limit Int)
+    , limitRTTIME :: One (Limit Time)
+    , startLimitBurst :: One Int
+    , startLimitInterval :: One Time
     }
     deriving (Eq, Show, Generic)
     deriving (Semigroup, Monoid) via (Generically Service)
+
+data Limit a
+    = LimitBoth (Infinity a)
+    | LimitSeparate (Infinity a) (Infinity a)
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically (Last (Limit a)))
+
+instance C.Config T.Text a => C.Config T.Text (Limit a) where
+    parser t = f t >>= \case
+        (first, Nothing) -> LimitBoth <$> C.parser first
+        (first, Just second) ->
+            LimitSeparate <$> C.parser first <*> C.parser second
+      where
+        f = C.parseText $ do
+            first  <- P.word
+            isBoth <- P.optional ":"
+            case isBoth of
+                Nothing -> return (first, Nothing)
+                Just _  -> do
+                    second <- P.word
+                    return (first, Just second)
+
+    unparser (LimitBoth a      ) = C.unparser a
+    unparser (LimitSeparate a b) = C.unparser a <> ":" <> C.unparser b
+
+data Infinity a = Infinity | NotInfinity a
+    deriving (Eq, Show, Generic, Functor)
+    deriving (Semigroup, Monoid) via (Generically (Last (Infinity a)))
+
+instance C.Config T.Text a => C.Config T.Text (Infinity a) where
+    parser t =
+        C.parseText
+                (P.choice [P.try "infinity" $> Infinity, NotInfinity <$> P.word]
+                )
+                t
+            >>= \p -> liftParseResult $ fmap C.parser p
+
+      where
+        liftParseResult
+            :: Infinity (C.ParseResult a) -> C.ParseResult (Infinity a)
+        liftParseResult Infinity                       = C.ParseSuccess Infinity
+        liftParseResult (NotInfinity (C.ParseError e)) = C.ParseError e
+        liftParseResult (NotInfinity (C.ParseSuccess v)) =
+            C.ParseSuccess (NotInfinity v)
+
+    unparser (NotInfinity v) = C.unparser v
+    unparser Infinity        = "infinity"
+
+data Byte = K Int | M Int | G Int | T Int | P Int | E Int | ByteNoUnit Int
+    deriving (Eq, Show)
+
+instance C.Config T.Text Byte where
+    parser = C.parseText $ do
+        n <- P.number
+        u <- P.choice
+            [ P.try "K" $> K
+            , P.try "M" $> M
+            , P.try "G" $> G
+            , P.try "T" $> T
+            , P.try "P" $> P
+            , P.try "E" $> E
+            , "" $> ByteNoUnit
+            ]
+        return $ u n
+
+    unparser (K          n) = T.pack (show n) <> "K"
+    unparser (M          n) = T.pack (show n) <> "M"
+    unparser (G          n) = T.pack (show n) <> "G"
+    unparser (T          n) = T.pack (show n) <> "T"
+    unparser (P          n) = T.pack (show n) <> "P"
+    unparser (E          n) = T.pack (show n) <> "E"
+    unparser (ByteNoUnit n) = T.pack (show n)
+
+
+data Time = Time [TimeUnit]
+    deriving (Eq, Show, Generic)
+    deriving (Semigroup, Monoid) via (Generically Time)
+
+instance C.Config T.Text Time where
+    parser t = Time <$> (p t >>= p')
+
+      where
+        p :: T.Text -> C.ParseResult [T.Text]
+        p t' =
+            P.toList
+                <$> C.parseText
+                        (P.wordsSepBy P.word (P.space >> return mempty))
+                        t'
+
+        p' :: [T.Text] -> C.ParseResult [TimeUnit]
+        p' ts = C.mergeParseResult $ fmap C.parser ts
+
+    unparser (Time ts) = mconcat $ fmap C.unparser ts
+
+
+data TimeUnit
+    = Microseconds T.Text Int
+    | Milliseconds T.Text Int
+    | Seconds T.Text Int
+    | Minutes T.Text Int
+    | Hours T.Text Int
+    | Days T.Text Int
+    | Weeks T.Text Int
+    | Months T.Text Int
+    | Years T.Text Int
+    | TimeNoUnit Int
+    deriving (Eq, Show)
+
+instance C.Config T.Text TimeUnit where
+    parser = C.parseText $ do
+        n <- P.number
+        u <- P.choice
+            [ P.try (P.choice ["usec", "us", "µs"]) >>= return . Microseconds
+            , P.try (P.choice ["msec", "ms"]) >>= return . Milliseconds
+            , P.try (P.choice ["seconds", "second", "sec", "s"])
+            >>= return
+            .   Seconds
+            , P.try (P.choice ["minutes", "minute", "min", "m"])
+            >>= return
+            .   Minutes
+            , P.try (P.choice ["hours", "hour", "hr", "h"]) >>= return . Hours
+            , P.try (P.choice ["days", "day", "d"]) >>= return . Days
+            , P.try (P.choice ["weeks", "week", "w"]) >>= return . Weeks
+            , P.try (P.choice ["months", "month", "m"]) >>= return . Months
+            , P.try (P.choice ["years", "year", "y"]) >>= return . Years
+            , "" $> TimeNoUnit
+            ]
+        return $ u n
+
+    unparser (Microseconds u n) = T.pack (show n) <> u
+    unparser (Milliseconds u n) = T.pack (show n) <> u
+    unparser (Seconds      u n) = T.pack (show n) <> u
+    unparser (Minutes      u n) = T.pack (show n) <> u
+    unparser (Hours        u n) = T.pack (show n) <> u
+    unparser (Days         u n) = T.pack (show n) <> u
+    unparser (Weeks        u n) = T.pack (show n) <> u
+    unparser (Months       u n) = T.pack (show n) <> u
+    unparser (Years        u n) = T.pack (show n) <> u
+    unparser (TimeNoUnit n    ) = T.pack (show n)
+
 
 instance C.Config S.Section Service where
     parser sec =
@@ -472,6 +634,26 @@ instance C.Config S.Section Service where
             <*> (C.parser (S.getValue sec "ProtectHome"))
             <*> (C.parser (S.getValue sec "ProtectSystem"))
             <*> (C.parser (S.getValue sec "CapabilityBoundingSet"))
+            <*> (C.parser (S.getValue sec "TimeoutStartSec"))
+            <*> (C.parser (S.getValue sec "Delegate"))
+            <*> (C.parser (S.getValue sec "LimitCPU"))
+            <*> (C.parser (S.getValue sec "LimitFSIZE"))
+            <*> (C.parser (S.getValue sec "LimitDATA"))
+            <*> (C.parser (S.getValue sec "LimitSTACK"))
+            <*> (C.parser (S.getValue sec "LimitCORE"))
+            <*> (C.parser (S.getValue sec "LimitRSS"))
+            <*> (C.parser (S.getValue sec "LimitNOFILE"))
+            <*> (C.parser (S.getValue sec "LimitAS"))
+            <*> (C.parser (S.getValue sec "LimitNPROC"))
+            <*> (C.parser (S.getValue sec "LimitMEMLOCK"))
+            <*> (C.parser (S.getValue sec "LimitLOCKS"))
+            <*> (C.parser (S.getValue sec "LimitSIGPENDING"))
+            <*> (C.parser (S.getValue sec "LimitMSGQUEUE"))
+            <*> (C.parser (S.getValue sec "LimitNICE"))
+            <*> (C.parser (S.getValue sec "LimitRTPRIO"))
+            <*> (C.parser (S.getValue sec "LimitRTTIME"))
+            <*> (C.parser (S.getValue sec "StartLimitBurst"))
+            <*> (C.parser (S.getValue sec "StartLimitInterval"))
 
     unparser u =
         let
@@ -528,6 +710,26 @@ instance C.Config S.Section Service where
                 /**? ("ProtectHome"          , C.unparser $ protectHome u)
                 /**? ("ProtectSystem"        , C.unparser $ protectSystem u)
                 /**? ("CapabilityBoundingSet", C.unparser $ capabilityBoundingSet u)
+                /**? ("TimeoutStartSec"      , C.unparser $ timeoutStartSec u)
+                /**? ("Delegate"             , C.unparser $ delegate u)
+                /**? ("LimitCPU"             , C.unparser $ limitCPU u)
+                /**? ("LimitFSIZE"           , C.unparser $ limitFSIZE u)
+                /**? ("LimitDATA"            , C.unparser $ limitDATA u)
+                /**? ("LimitSTACK"           , C.unparser $ limitSTACK u)
+                /**? ("LimitCORE"            , C.unparser $ limitCORE u)
+                /**? ("LimitRSS"             , C.unparser $ limitRSS u)
+                /**? ("LimitNOFILE"          , C.unparser $ limitNOFILE u)
+                /**? ("LimitAS"              , C.unparser $ limitAS u)
+                /**? ("LimitNPROC"           , C.unparser $ limitNPROC u)
+                /**? ("LimitMEMLOCK"         , C.unparser $ limitMEMLOCK u)
+                /**? ("LimitLOCKS"           , C.unparser $ limitLOCKS u)
+                /**? ("LimitSIGPENDING"      , C.unparser $ limitSIGPENDING u)
+                /**? ("LimitMSGQUEUE"        , C.unparser $ limitMSGQUEUE u)
+                /**? ("LimitNICE"            , C.unparser $ limitNICE u)
+                /**? ("LimitRTPRIO"          , C.unparser $ limitRTPRIO u)
+                /**? ("LimitRTTIME"          , C.unparser $ limitRTTIME u)
+                /**? ("StartLimitBurst"      , C.unparser $ startLimitBurst u)
+                /**? ("StartLimitInterval", C.unparser $ startLimitInterval u)
 
 
 -- |A Systemd [Type] record.
@@ -697,21 +899,6 @@ instance C.Config T.Text Output where
     parser = C.parseText (P.choice [P.chunk "journal" $> OJournal])
 
     unparser OJournal = "journal"
-
-
-data TasksMax = TasksMax Int | TasksMaxInfinity
-    deriving (Eq, Show, Generic)
-    deriving (Semigroup) via (Generically (Last TasksMax))
-
-instance Monoid TasksMax where
-    mempty = TasksMax 0
-
-instance C.Config T.Text TasksMax where
-    parser = C.parseText
-        ((TasksMax <$> P.number) <|> (P.chunk "infinity" $> TasksMaxInfinity))
-
-    unparser (TasksMax i)     = T.pack $ show i
-    unparser TasksMaxInfinity = "infinity"
 
 
 data Restart
