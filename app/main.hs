@@ -19,22 +19,14 @@ import qualified Text.Nicify                   as Nicify
 import qualified Parser                        as P
 
 
-data Arguments = ArgParse Config T.Text
-               | ArgPrint Config T.Text
-               | ArgUpdate Config Bool T.Text SM.ConstructResult
+data Arguments = Arguments Config Bool T.Text SM.ConstructResult
 
 data Config = CSystemdService
 
 
 main :: IO ()
 main = arguments >>= \case
-    ArgParse CSystemdService file ->
-        parse file $ \(parsed :: SystemdService) ->
-            putStrLn $ Nicify.nicify $ show parsed
-    ArgPrint CSystemdService file ->
-        parse file $ \(parsed :: SystemdService) ->
-            putStrLn $ T.unpack $ XDGDesktop.generate $ C.unparser parsed
-    ArgUpdate CSystemdService debug file constructResult ->
+    Arguments CSystemdService debug file constructResult ->
         case SM.constructErrors constructResult of
             [] -> parseXDG file $ \parsed -> do
                 when debug $ do
@@ -71,48 +63,18 @@ main = arguments >>= \case
                         putStrLn $ "Error while parsing file: " <> show err
                     Right parsed -> f parsed
 
-    parse
-        :: (C.Config XDGDesktop.XDGDesktop v) => T.Text -> (v -> IO ()) -> IO ()
-    parse file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
-        (   fmap C.parser
-            .   P.parse XDGDesktop.parser
-            <$> (T.pack <$> SIO.hGetContents handle)
-            )
-            >>= \case
-                    Left (err :: P.Error Void) ->
-                        putStrLn $ "Error while parsing file: " <> show err
-                    Right (C.ParseError err) ->
-                        putStrLn $ "Error while parsing file: " <> show err
-                    Right (C.ParseSuccess parsed) -> f parsed
-
-
 arguments :: IO Arguments
 arguments = Args.execParser $ Args.info
-    (         Args.subparser
-            [ ( "parse"
-              , "Parse a file"
-              , ArgParse <$> configtypeparser <*> Args.strArgument
-                  (Args.metavar "FILE")
-              )
-            , ( "print"
-              , "Parse a file and print it back"
-              , ArgPrint <$> configtypeparser <*> Args.strArgument
-                  (Args.metavar "FILE")
-              )
-            , ( "update"
-              , "Update an existing config"
-              , ArgUpdate
-              <$> configtypeparser
-              <*> Args.switch
-                      (Args.long "debug" <> Args.short 'd' <> Args.help
-                          "Enable debug output"
-                      )
-              <*> Args.strArgument (Args.metavar "FILE")
-              <*> (SM.construct <$> Args.some
-                      (Args.strArgument (Args.metavar "UPDATE..."))
+    (         Arguments
+    <$>       configtypeparser
+    <*>       Args.switch
+                  (Args.long "debug" <> Args.short 'd' <> Args.help
+                      "Enable debug output"
                   )
+    <*>       Args.strArgument (Args.metavar "FILE")
+    <*>       (   SM.construct
+              <$> Args.many (Args.strArgument (Args.metavar "UPDATE..."))
               )
-            ]
     Args.<**> Args.helper
     )
     (Args.desc "uconfig")

@@ -35,6 +35,7 @@ module Args
 
       -- * Re-exports from Parser
     , CApp.some
+    , CApp.many
     )
 where
 
