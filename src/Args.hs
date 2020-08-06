@@ -32,6 +32,8 @@ module Args
     , Args.long
     , Args.short
     , Args.help
+    , Args.completeWith
+    , Args.action
 
       -- * Re-exports from Parser
     , CApp.some
@@ -51,10 +53,14 @@ import           Utils                          ( mapLeft )
 -- name as it must be entered on the command-line, 'description' a
 -- long description of the 'command' as it will show up in the command
 -- help, and finally the 'parser' for that command.
-subparser :: Foldable t => t (String, String, Args.Parser a) -> Args.Parser a
-subparser commands = Args.hsubparser $ foldl
+subparser
+    :: Foldable t
+    => t (String, String, Args.Parser a)
+    -> Args.Mod Args.CommandFields a
+    -> Args.Parser a
+subparser commands info = Args.hsubparser $ foldl
     (\xs (c, d, t) -> xs <> Args.command c (Args.info t (desc d)))
-    mempty
+    info
     commands
 
 -- |Set description of command-line help.
