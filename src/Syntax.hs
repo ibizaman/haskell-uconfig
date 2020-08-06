@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-|
 Module      : Syntax
-Description :
+Description : Generic syntax for config file
 Copyright   : (c) Pierre Penninckx, 2020
 License     : GPL-3
 Maintainer  : Pierre Penninckx (ibizapeanut@gmail.com)
@@ -301,7 +301,8 @@ instance SM.Updatable T.Text (Maybe T.Text) XDGDesktop where
                 (Nothing, xdg /*. (Just k1, updateSection k2 $ newValue <$> op))
             _ -> (Just "triple nested keys or more is not supported", xdg)
       where
-        updateSection _  SM.Erase   _        = Nothing
+        updateSection k' SM.Erase   Nothing  = Just (mempty /**? (k', mempty))
+        updateSection k' SM.Erase   (Just s) = Just (s /**? (k', mempty))
         updateSection k' (SM.Add v) Nothing  = Just (mempty /** (k', [v]))
         updateSection k' (SM.Add v) (Just s) = Just (s /** (k', [v]))
         updateSection k' (SM.Remove v) s =
