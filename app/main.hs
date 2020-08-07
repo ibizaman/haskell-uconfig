@@ -22,47 +22,62 @@ import qualified Parser                        as P
 
 data Arguments = Arguments Bool FileType T.Text SM.ConstructResult
 
-data FileType = FTSystemdService
+data FileType
+    = FTGeneric
+    | FTSystemdService
 
 
 main :: IO ()
 main = arguments >>= \case
-    Arguments debug FTSystemdService file constructResult ->
-        case SM.constructErrors constructResult of
-            [] -> parseXDG file $ \parsed -> do
+    Arguments debug filetype file constructResult ->
+        withSyntaxModifier constructResult $ \syntaxModifier ->
+            parseXDG file $ \xdg -> do
                 when debug $ do
                     putStr "Updates: "
-                    print $ SM.constructResult constructResult
+                    print syntaxModifier
                     putStrLn ""
-                case SM.apply (SM.constructResult constructResult) parsed of
-                    (Nothing, updated) -> do
-                        when debug $ do
-                            putStr "Intermediate Representation: "
-                            putStrLn $ Nicify.nicify $ show updated
-                            putStrLn ""
-                        case C.parser updated of
-                            C.ParseError err ->
-                                putStrLn $ "Error during update: " <> show err
-                            C.ParseSuccess (parsed' :: SystemdService) ->
-                                putStrLn
-                                    $ T.unpack
-                                    $ XDGDesktop.generate
-                                    $ C.unparser parsed'
-                                    `XDGDesktop.followOrderFrom` parsed
-                    (Just err, _) -> do
-                        putStrLn "An error was encountered while updating:"
-                        putStrLn . T.unpack $ err
+
+                updateXDG syntaxModifier xdg debug $ \updated ->
+                    case filetype of
+                        FTGeneric ->
+                            putStrLn $ T.unpack $ XDGDesktop.generate updated
+                        FTSystemdService -> roundtripParse xdg updated
+  where
+    withSyntaxModifier constructResult onSuccess =
+        case SM.constructErrors constructResult of
+            []   -> onSuccess $ SM.constructResult constructResult
             errs -> do
                 putStrLn "Some UPDATEs could not be parsed:"
                 sequence_ $ print <$> errs
-  where
+
     parseXDG :: T.Text -> (XDGDesktop.XDGDesktop -> IO ()) -> IO ()
     parseXDG file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
         (P.parse XDGDesktop.parser <$> (T.pack <$> SIO.hGetContents handle))
             >>= \case
                     Left (err :: P.Error Void) ->
                         putStrLn $ "Error while parsing file: " <> show err
-                    Right parsed -> f parsed
+                    Right xdg -> f xdg
+
+    updateXDG constructResult xdg debug onSuccess =
+        case SM.apply constructResult xdg of
+            (Just err, _) -> do
+                putStrLn "An error was encountered while updating:"
+                putStrLn . T.unpack $ err
+            (Nothing, updated) -> do
+                when debug $ do
+                    putStr "Intermediate Representation: "
+                    putStrLn $ Nicify.nicify $ show updated
+                    putStrLn ""
+                onSuccess updated
+
+    roundtripParse parsed updated = case C.parser updated of
+        C.ParseError err -> putStrLn $ "Error during update: " <> show err
+        C.ParseSuccess (parsed' :: SystemdService) ->
+            putStrLn
+                $                            T.unpack
+                $                            XDGDesktop.generate
+                $                            C.unparser parsed'
+                `XDGDesktop.followOrderFrom` parsed
 
 arguments :: IO Arguments
 arguments = Args.execParser $ Args.info
@@ -73,15 +88,19 @@ arguments = Args.execParser $ Args.info
                   <> Args.help
                          "Enable debug output (shows intended updates if any and internal representation)"
                   )
-    <*>       Args.argument
+    <*>       Args.option
                   (Args.parsecArg
-                      (P.choice ["systemdservice" $> FTSystemdService] :: P.Parser
-                            Void
-                            FileType
+                      (P.choice
+                          [ "systemdservice" $> FTSystemdService
+                          , "generic" $> FTGeneric
+                          ] :: P.Parser Void FileType
                       )
                   )
                   (  Args.metavar "FILETYPE"
-                  <> Args.completeWith ["systemdservice"]
+                  <> Args.long "type"
+                  <> Args.short 't'
+                  <> Args.completeWith ["systemdservice", "generic"]
+                  <> Args.value FTGeneric
                   <> Args.help
                          "File type of the file to update, currently only 'systemdservice' is the only one supported."
                   )

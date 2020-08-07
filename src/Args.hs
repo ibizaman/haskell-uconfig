@@ -27,6 +27,8 @@ module Args
     , Args.helper
     , (Args.<**>)
     , Args.strOption
+    , Args.option
+    , Args.value
     , Args.flag
     , Args.switch
     , Args.long
