@@ -2,10 +2,79 @@
 
 This package helps updating config files. It aims to support every
 config file syntax and when applicable provides semantic updates.
+Although for now only Systemd Service files are supported.
 
 It provides a CLI executable so it can be easily integrated in bash
 scripts, for example. It also provides a library to allow users to
 create more abstract config changes using the library.
+
+# Usage
+
+Print help usage.
+
+```
+$ uconfig --help
+Usage: uconfig [-d|--debug] FILETYPE FILENAME [UPDATE...]
+  Update config files while keeping formatting and comments.
+
+Available options:
+  -d,--debug               Enable debug output (shows intended updates if any
+                           and internal representation)
+  FILETYPE                 File type of the file to update, currently only
+                           'systemdservice' is the only one supported.
+  FILENAME                 Path to file that will get modified.
+  UPDATE...                Updates of the form field-operator-value (ex:
+                           Unit.Description='my service')
+  -h,--help                Show this help text
+```
+
+Print the config file untouched after having parsed the config file.
+Unhandled fields are silently dropped.
+
+```
+$ uconfig systemdservice /etc/systemd/system/multi-user.target.wants/ntpd.service
+[Unit]
+Description=Network Time Service
+After=network.target nss-lookup.target
+Conflicts=systemd-timesyncd.service
+
+[Service]
+Type=forking
+PrivateTmp=true
+ExecStart=/usr/bin/ntpd -g -u ntp:ntp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Print the new config file after applying several modifications, in
+order:
+- Replace `Unit.Description`'s value
+- Change value of `Service.PrivateTmp` to `no`
+- Add a target to `Install.WantedBy`
+- Remove `Unit.Conflicts` field
+
+```
+$ uconfig systemdservice /etc/systemd/system/multi-user.target.wants/ntpd.service \
+  Unit.Description='My NTPD Service' \
+  Service.PrivateTmp=no \
+  Install.WantedBy+=network.target \
+  Unit.Conflicts=
+[Unit]
+Description=My NTPD Service
+After=network.target nss-lookup.target
+
+[Service]
+Type=forking
+PrivateTmp=false
+ExecStart=/usr/bin/ntpd -g -u ntp:ntp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=network.target
+```
 
 # Building
 
@@ -35,20 +104,15 @@ Then point your browser at http://localhost:65000.
 
 ## Github Action
 
-This template project includes a github action workflow which builds
-and tests the project as well as uploading the binary as a github
-workflow artifact.
-
-To download it, follow these steps:
+To download the binary from the github artifacts, follow these steps:
 1. Go to the latest github action run
 2. Download the artifact.
-3. Unzip it with `unzip hs-template-project.zip`
-4. set the executable permission bit with `chmod a+x hs-template-project/hs-template-project`
-5. run it with `./hs-template-project/hs-template-project` and you should see printed `"Hello World"`.
+3. Unzip it with `unzip haskell-uconfig.zip`
+4. set the executable permission bit with `chmod a+x haskell-uconfig/haskell-uconfig`
+5. install it with `cp ./haskell-uconfig/haskell-uconfig ~/bin/uconfig`
+6. run it with `./haskell-uconfig/haskell-uconfig ARGS`
 
-## TODO
+# TODO
 
-Investigate diff packages:
-- https://hackage.haskell.org/package/diff-0.1.0.0/docs/Diff.html
-- https://hackage.haskell.org/package/tree-diff-0.1/docs/Data-TreeDiff.html
-- https://hackage.haskell.org/package/gdiff-1.1/docs/Data-Generic-Diff.html
+- Support generic filetype with updates
+- Support updates for known filetypes (make Unit.After-=XXX work as expected)
