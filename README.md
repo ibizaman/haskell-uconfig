@@ -8,6 +8,16 @@ It provides a CLI executable so it can be easily integrated in bash
 scripts, for example. It also provides a library to allow users to
 create more abstract config changes using the library.
 
+# Install from github tarballs
+
+To download the binary from the github, follow these steps:
+1. Go to the latest github action run
+2. Download the artifact.
+3. Unzip it with `unzip haskell-uconfig.zip`
+4. set the executable permission bit with `chmod a+x haskell-uconfig/uconfig`
+5. install it with `cp ./haskell-uconfig/uconfig ~/bin/`
+6. run it with `uconfig ARGS`
+
 # Usage
 
 Print help usage.
@@ -101,16 +111,6 @@ stack hoogle -- server --local --port=65000
 ```
 
 Then point your browser at http://localhost:65000.
-
-## Github Action
-
-To download the binary from the github artifacts, follow these steps:
-1. Go to the latest github action run
-2. Download the artifact.
-3. Unzip it with `unzip haskell-uconfig.zip`
-4. set the executable permission bit with `chmod a+x haskell-uconfig/haskell-uconfig`
-5. install it with `cp ./haskell-uconfig/haskell-uconfig ~/bin/uconfig`
-6. run it with `./haskell-uconfig/haskell-uconfig ARGS`
 
 # TODO
 
