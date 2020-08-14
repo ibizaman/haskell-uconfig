@@ -9,7 +9,7 @@ Stability   : experimental
 Portability : POSIX
 
 The Syntax.XDGDesktop module provides functions to parse and generate
-XDG Desktop files.
+Lvl2Config from the XDG Desktop specification.
 
 https://specifications.freedesktop.org/desktop-entry-spec/latest/
 -}
@@ -45,7 +45,7 @@ import qualified OrderedMap                    as OM
 import qualified Parser                        as P
 
 
-instance C.Config T.Text XDGDesktop where
+instance C.Config T.Text Lvl2Config where
     parser   = C.parseText parser
     unparser = generate
 
@@ -54,9 +54,9 @@ commentStart :: Ord e => P.Parser e T.Text
 commentStart = P.choice ["#", ";"]
 
 
-parser :: P.ShowErrorComponent e => P.Parser e XDGDesktop
+parser :: P.ShowErrorComponent e => P.Parser e Lvl2Config
 parser =
-    XDGDesktop
+    Lvl2Config
         <$> (Maybe.fromMaybe mempty <$> P.optional (P.try parseSection))
         <*> (Maybe.fromMaybe mempty <$> P.optional parseComment)
         <*> (Maybe.fromMaybe mempty <$> P.optional parseSections)
@@ -121,7 +121,7 @@ parseComment = mconcat <$> P.some (newComment1 <$> commentStart <*> P.line)
 
 
 
-followOrderFrom :: XDGDesktop -> XDGDesktop -> XDGDesktop
+followOrderFrom :: Lvl2Config -> Lvl2Config -> Lvl2Config
 followOrderFrom xdg order = xdg
     { sections = newSections
                  $ OM.foldWithKeys (\k s -> [(k, sortSection k s)])
@@ -136,7 +136,7 @@ followOrderFrom xdg order = xdg
             `OM.followOrderFrom` (unSection $ getSection order k)
 
 
-generate :: XDGDesktop -> T.Text
+generate :: Lvl2Config -> T.Text
 generate xdg =
     T.intercalate "\n"
         $  generateComment (firstComments xdg)

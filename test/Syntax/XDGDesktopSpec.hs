@@ -41,7 +41,7 @@ parsesRightMulti name p = mapM_
 roundtrip :: T.Text -> H.SpecWith ()
 roundtrip str =
     H.it "roundtrip"
-        $ fmap generate (P.parse (parser :: P.Parser Void XDGDesktop) str)
+        $ fmap generate (P.parse (parser :: P.Parser Void Lvl2Config) str)
         `HPP.shouldBe` Right str
 
 

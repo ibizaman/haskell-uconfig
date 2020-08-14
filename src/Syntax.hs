@@ -28,7 +28,7 @@ A few noteworthy features and conventions:
   it is preceded by a comment sign.
 -}
 module Syntax
-    ( XDGDesktop(..)
+    ( Lvl2Config(..)
 
     -- * Sections
     , Sections
@@ -73,10 +73,9 @@ import qualified SyntaxModifier                as SM
 import qualified OrderedMap                    as OM
 
 
--- |Datatype representing any config file fitting [Systemd's extended
--- XDGDesktop](https://www.freedesktop.org/software/systemd/man/systemd.syntax.html)
--- syntax. It retains all formatting and comments.
-data XDGDesktop = XDGDesktop
+-- |Datatype representing a config file having comments, assignments
+-- and sections. It retains all formatting and comments.
+data Lvl2Config = Lvl2Config
     { firstSection :: Section     -- ^Global section, that is
                                   -- everything before the first
                                   -- header.
@@ -90,46 +89,46 @@ data XDGDesktop = XDGDesktop
     }
     deriving (Show, Eq)
 
--- |Union of two 'XDGDesktop'.
-instance Semigroup XDGDesktop where
-    a <> b = XDGDesktop
+-- |Union of two 'Lvl2Config'.
+instance Semigroup Lvl2Config where
+    a <> b = Lvl2Config
         { firstSection     = firstSection a <> firstSection b
         , firstComments    = firstComments a <> firstComments b
         , sections         = sections a <> sections b
         , trailingComments = trailingComments a <> trailingComments b
         }
 
-instance Monoid XDGDesktop where
-    mempty = XDGDesktop { firstSection     = mempty
+instance Monoid Lvl2Config where
+    mempty = Lvl2Config { firstSection     = mempty
                         , firstComments    = mempty
                         , sections         = mempty
                         , trailingComments = mempty
                         }
 
--- |Adds or replaces a 'Section' in a 'XDGDesktop'. The first argument
+-- |Adds or replaces a 'Section' in a 'Lvl2Config' The first argument
 -- of the tuple is a 'Maybe':
 --
 -- - A 'Just' means the 'Section' will be added to the 'sections' of
--- the 'XDGDesktop'.
+-- the 'Lvl2Config'.
 -- - A 'Nothing' means the 'Section' will be added to the
--- 'firstSection' of the 'XDGDesktop'.
-(/*) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
+-- 'firstSection' of the 'Lvl2Config'.
+(/*) :: Lvl2Config -> (Maybe T.Text, Section) -> Lvl2Config
 x /* (Just k, s) = x
     { sections = let (Sections s') = sections x in Sections $ OM.insert k s s'
     }
 x /* (Nothing, s) = x { firstSection = s }
 
--- |Adds, replaces or deletes a 'Section' in a 'XDGDesktop'. The first
+-- |Adds, replaces or deletes a 'Section' in a 'Lvl2Config'. The first
 -- argument of the tuple is a 'Maybe':
 --
 -- - A 'Just' means the 'Section' will be added to the 'sections' of
--- the 'XDGDesktop'.
+-- the 'Lvl2Config'.
 -- - A 'Nothing' means the 'Section' will be added to the
--- 'firstSection' of the 'XDGDesktop'.
+-- 'firstSection' of the 'Lvl2Config'.
 --
 -- If the second argument, the 'Section', is @== mempty@, then the
 -- 'Section' is deleted. Otherwise, the 'Section' is added.
-(/*?) :: XDGDesktop -> (Maybe T.Text, Section) -> XDGDesktop
+(/*?) :: Lvl2Config -> (Maybe T.Text, Section) -> Lvl2Config
 x /*? (Just k, s) = x
     { sections = let (Sections ss) = sections x
                  in  Sections $ if s == mempty
@@ -138,20 +137,20 @@ x /*? (Just k, s) = x
     }
 x /*? (Nothing, s) = x { firstSection = s }
 
--- |Alters a 'Section' in a 'XDGDesktop'. The first argument
+-- |Alters a 'Section' in a 'Lvl2Config'. The first argument
 -- of the tuple is a 'Maybe':
 --
 -- - A 'Just' means the 'Section' that will be altered is in the 'sections' of
--- the 'XDGDesktop'.
+-- the 'Lvl2Config'.
 -- - A 'Nothing' means the first 'Section' will be altered .
 --
 -- The second argument to the tuple is the function that alters a
 -- 'Section'. It should follow the same behavior as
 -- 'OrderedMap.alter'.
 (/*.)
-    :: XDGDesktop
+    :: Lvl2Config
     -> (Maybe T.Text, Maybe Section -> Maybe Section)
-    -> XDGDesktop
+    -> Lvl2Config
 x /*. (Just k, f) = x
     { sections = let (Sections s') = sections x in Sections $ OM.alter f k s'
     }
@@ -281,10 +280,10 @@ instance Data.String.IsString Comment where
     fromString s = Comment (T.pack <$> lines s) "#"
 
 
-getFirstSection :: XDGDesktop -> Section
+getFirstSection :: Lvl2Config -> Section
 getFirstSection = firstSection
 
-getSection :: XDGDesktop -> T.Text -> Section
+getSection :: Lvl2Config -> T.Text -> Section
 getSection x name =
     M.fromMaybe mempty $ OM.lookup name $ unSections $ sections x
 
@@ -292,7 +291,7 @@ getValue :: Section -> T.Text -> [Value T.Text]
 getValue s name = M.fromMaybe mempty $ OM.lookup name $ unSection s
 
 
-instance SM.Updatable T.Text (Maybe T.Text) XDGDesktop where
+instance SM.Updatable T.Text (Maybe T.Text) Lvl2Config where
     update key op xdg = case SM.keyPop key of
         (Nothing, k) ->
             (Nothing, xdg /*. (Nothing, updateSection k $ newValue <$> op))

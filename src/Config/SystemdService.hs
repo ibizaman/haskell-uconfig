@@ -256,7 +256,7 @@ data SystemdService = SystemdService
   deriving (Eq, Show, Generic)
   deriving (Semigroup, Monoid) via (Generically SystemdService)
 
-instance C.Config S.XDGDesktop SystemdService where
+instance C.Config S.Lvl2Config SystemdService where
     parser xdg =
         SystemdService
             <$> C.parser (S.getSection xdg "Unit")

@@ -177,10 +177,10 @@ spec = do
                                )
     H.describe "parse full service" $ do
         H.it "empty headers"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService) mempty
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService) mempty
             `HPP.shouldBe` C.ParseError (C.FieldNotFound "ExecStart")
         H.it "with description"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Unit"
                      , (mempty /** ("Description", ["my service"]))
@@ -197,7 +197,7 @@ spec = do
                                    }
                                )
         H.it "with description and type"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Unit"
                      , (mempty /** ("Description", ["my service"]))
@@ -214,7 +214,7 @@ spec = do
                                    }
                                )
         H.it "with service"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Service"
                      , (   mempty
@@ -238,7 +238,7 @@ spec = do
                                    }
                                }
         H.it "with service and tasksmax=10"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Service"
                      , (   mempty
@@ -258,7 +258,7 @@ spec = do
                                    }
                                }
         H.it "with service and tasksmax=infinity"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Service"
                      , (   mempty
@@ -277,7 +277,7 @@ spec = do
                                    }
                                }
         H.it "with service and disabled tasksmax=infinity"
-            $ (C.parser :: S.XDGDesktop -> C.ParseResult SystemdService)
+            $ (C.parser :: S.Lvl2Config -> C.ParseResult SystemdService)
                   (  mempty
                   /* ( Just "Service"
                      , (   mempty
@@ -711,7 +711,7 @@ WantedBy=multi-user.target|]
 
 fullRoundTrip :: String -> T.Text -> SystemdService -> H.Spec
 fullRoundTrip name t v = do
-    let intermediate = (C.parser t) :: C.ParseResult S.XDGDesktop
+    let intermediate = (C.parser t) :: C.ParseResult S.Lvl2Config
 
         follow       = case intermediate of
             C.ParseError   _ -> id
@@ -721,7 +721,7 @@ fullRoundTrip name t v = do
         p = intermediate >>= C.parser
 
         g :: SystemdService -> T.Text
-        g x = C.unparser $ follow $ ((C.unparser x) :: S.XDGDesktop)
+        g x = C.unparser $ follow $ ((C.unparser x) :: S.Lvl2Config)
 
     H.it (name <> " - parse") $ p `HPP.shouldBe` C.ParseSuccess v
     H.it (name <> " - generate") $ g v `HPP.shouldBe` t

@@ -14,6 +14,7 @@ import qualified Data.Text                     as T
 import           Data.Void                      ( Void )
 import qualified Args
 import qualified System.IO                     as SIO
+import qualified Syntax
 import qualified Syntax.XDGDesktop             as XDGDesktop
 import qualified SyntaxModifier                as SM
 import qualified Text.Nicify                   as Nicify
@@ -50,7 +51,7 @@ main = arguments >>= \case
                 putStrLn "Some UPDATEs could not be parsed:"
                 sequence_ $ print <$> errs
 
-    parseXDG :: T.Text -> (XDGDesktop.XDGDesktop -> IO ()) -> IO ()
+    parseXDG :: T.Text -> (Syntax.Lvl2Config -> IO ()) -> IO ()
     parseXDG file f = SIO.withFile (T.unpack file) SIO.ReadMode $ \handle ->
         (P.parse XDGDesktop.parser <$> (T.pack <$> SIO.hGetContents handle))
             >>= \case
