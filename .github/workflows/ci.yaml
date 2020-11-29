@@ -1,52 +1,21 @@
 name: CI
 
-on: [push]
+on:
+    pull_request:
+    push:
 
 jobs:
     test:
         runs-on: ubuntu-latest
-
         steps:
-            - name: Checkout repo
-              uses: actions/checkout@master
-
-            - name: Setup Haskell
-              uses: actions/setup-haskell@v1
+            - uses: actions/checkout@v2.3.4
+            - uses: cachix/install-nix-action@v12
+            - uses: cachix/cachix-action@v8
               with:
-                  ghc-version: "8.6.5"
-
-            #- name: Cache Haskell packages
-            #  uses: actions/cache@v1
-            #  with:
-            #    path: vendor/stack
-            #    key: ${{ runner.OS }}-build-${{ hashFiles('stack.yaml.lock') }}
-            #    restore-keys: |
-            #      ${{ runner.OS }}-build-${{ env.cache-name }}-
-            #      ${{ runner.OS }}-build-
-            #      ${{ runner.OS }}-
-
-            - name: Build Haskell code
-              run: |
-                  stack --jobs 8 \
-                        --stack-root $GITHUB_WORKSPACE/vendor/stack \
-                        build \
-                        --haddock \
-                        --haddock-deps
-
-            - name: Test Haskell code
-              run: |
-                  stack --jobs 8 \
-                        --stack-root $GITHUB_WORKSPACE/vendor/stack \
-                        test
-
-            - name: Build artifacts
-              run: |
-                  stack --stack-root $GITHUB_WORKSPACE/vendor/stack \
-                        --local-bin-path $GITHUB_WORKSPACE/bin \
-                        install
-                  chmod a+x $GITHUB_WORKSPACE/bin/uconfig
-
-            - uses: actions/upload-artifact@master
+                  name: ibizaman
+                  authToken: "${{ secrets.CACHIX_IBIZAMAN_AUTHTOKEN }}"
+            - run: nix-build
+            - uses: actions/upload-artifact@v2
               with:
                   name: uconfig
-                  path: bin
+                  path: result/bin/uconfig

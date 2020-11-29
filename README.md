@@ -13,10 +13,9 @@ create more abstract config changes using the library.
 To download the binary from the github, follow these steps:
 1. Go to the latest github action run
 2. Download the artifact.
-3. Unzip it with `unzip haskell-uconfig.zip`
-4. set the executable permission bit with `chmod a+x haskell-uconfig/uconfig`
-5. install it with `cp ./haskell-uconfig/uconfig ~/bin/`
-6. run it with `uconfig ARGS`
+3. Unzip it with `unzip uconfig.zip`
+4. set the executable permission bit with `chmod a+x uconfig`
+5. run it with `./uconfig ARGS`
 
 # Usage
 
@@ -91,23 +90,21 @@ WantedBy=network.target
 Building and running the app is done with:
 
 ```
-stack build --haddock --haddock-deps
-stack run
+make build
+make run
 ```
-
-The haddock arguments are used to generate the documentation.
 
 Running the tests is done with:
 
 ```
-stack test
+make test
 ```
 
 Looking at the documentation is best done through using hoogle, to do
 that, run:
 
 ```
-stack hoogle -- server --local --port=65000
+make hoogle-build hoogle-generate hoogle-serve
 ```
 
 Then point your browser at http://localhost:65000.
